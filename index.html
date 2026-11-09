@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#2747d6">
+<meta name="theme-color" content="#0a0c0b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Mi Discoteca</title>
@@ -12,16 +12,13 @@
 <style>
 /* Una columna tipo explorador de carpetas: ruta arriba, separadores de cajón, lista abajo */
 :root{
-  --bg:#f3f4f7;--surface:#fff;--fg:#14161c;--muted:#5d6271;--line:#dcdfe6;
-  --accent:#2747d6;--accent-ink:#fff;--star:#d99a00;--tab:#e4e8f6;--danger:#b42318;--spot:#178a45;
+  --bg:#0a0c0b;--surface:rgba(22,25,23,.84);--fg:#eef2ef;--muted:#a1aaa4;--line:rgba(255,255,255,.10);
+  --accent:#1ed760;--accent-ink:#04110a;--star:#ffc23d;--tab:rgba(30,215,96,.13);--danger:#ff7b72;--spot:#1db954;
   --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
-  color-scheme:light;
+  color-scheme:dark;
 }
-@media (prefers-color-scheme:dark){:root{
-  --bg:#111318;--surface:#1a1d24;--fg:#e8eaf0;--muted:#9aa0ae;--line:#2b2f39;
-  --accent:#7d93ff;--accent-ink:#0d1020;--star:#ffc23d;--tab:#232a45;--danger:#ff8a80;--spot:#3fc274;color-scheme:dark}}
 *{box-sizing:border-box}
 html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
@@ -84,6 +81,16 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--tab);padding:2px 
 .bar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.15)}
 .bar select{flex:1;min-width:160px}
 progress{width:100%}
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(1100px 620px at 8% -8%,rgba(30,215,96,.30),transparent 62%),radial-gradient(900px 520px at 105% 12%,rgba(30,215,96,.12),transparent 60%),radial-gradient(800px 600px at 50% 120%,rgba(30,215,96,.08),transparent 60%),var(--bg);overflow:hidden}
+#bg .cv{position:absolute;inset:-60px;background-size:cover;background-position:center;filter:blur(46px) saturate(1.35);transform:scale(1.15);opacity:0;transition:opacity .6s ease}
+#bg.on .cv{opacity:.62}
+#bg .sh{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,10,9,.35) 0%,rgba(8,10,9,.78) 55%,rgba(8,10,9,.92) 100%);opacity:0;transition:opacity .6s ease}
+#bg.on .sh{opacity:1}
+.wrap{position:relative;z-index:1}
+.btn{background:rgba(255,255,255,.06)}
+.btn.primary{background:var(--accent)}
+.search,input[type=text],input[type=password],input[type=search],textarea,select{background:rgba(0,0,0,.35)}
+@media (prefers-reduced-motion:reduce){#bg .cv,#bg .sh{transition:none}}
 .row.al{align-items:center}
 .row.al img{width:60px;height:60px}
 .row.al .at{color:inherit;text-decoration:none;font-weight:500}
@@ -102,6 +109,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 </style>
 </head>
 <body>
+<div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
 (function(){
@@ -326,6 +334,7 @@ async function loadSim(b){
 function go(v){
   if(v.k==='band'&&!v.from&&(UI.view.k==='sub'||UI.view.k==='genre'))v={...v,from:{g:UI.view.g,s:UI.view.s||null}};
   UI.view=v;UI.claudeOut=null;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
+  UI.bgPick=Math.random();
   if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];b.lastOpened=Date.now();touch();
     if(b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>30*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;say(spErr(e),true)})}}
   render();window.scrollTo(0,0);
@@ -658,7 +667,10 @@ app.addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;const
 
 /* ================= render ================= */
 function renderSync(){const s=document.getElementById('syncst');if(s)s.textContent=UI.syncState}
-function render(){try{renderInner()}catch(e){showFatal(e)}}
+function bandCover(b){const al=(b.albums||[]).filter(a=>a.img&&!(b.hidden||[]).includes(a.id)),pk=new Set(b.picked||[]),mine=al.filter(a=>pk.has(a.id)),pool=mine.length?mine:al.filter(a=>a.type!=='single').length?al.filter(a=>a.type!=='single'):al;return pool.length?pool[Math.floor((UI.bgPick||0)*pool.length)%pool.length].img:(b.img||'')}
+function paintBg(){const el=document.getElementById('bg');if(!el)return;const b=UI.view.k==='band'&&D.bands[UI.view.id];const url=b?bandCover(b):'';const cv=el.firstElementChild;
+  if(url){const css=`url("${url.replace(/"/g,'%22')}")`;if(cv.style.backgroundImage!==css)cv.style.backgroundImage=css;el.classList.add('on')}else el.classList.remove('on')}
+function render(){try{renderInner();paintBg()}catch(e){showFatal(e)}}
 function renderInner(){
   const keep={};document.querySelectorAll('#frm input,#frm select').forEach(el=>{if(el.id)keep[el.id]=el.value});
   const v=UI.view.k;
