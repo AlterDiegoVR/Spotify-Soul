@@ -278,6 +278,7 @@ function descIds(x){const ids=[x.id];walk(x.subs,y=>ids.push(y.id));return ids}
 function fixData(){
   if(!D||typeof D!=='object')D={v:1,updated:0,tree:{genres:[]},bands:{}};
   if(!D.bands||typeof D.bands!=='object')D.bands={};
+  if(!D.ignored||typeof D.ignored!=='object')D.ignored={};
   for(const k of Object.keys(D.bands)){const b=D.bands[k];
     if(!b||typeof b!=='object'){delete D.bands[k];continue}
     b.id=k;b.name=String(b.name||'(sin nombre)');
@@ -305,8 +306,9 @@ function countIn(gid,sid){
 const unclassified=()=>topBands(b=>!places(b).length);
 const bandBySid=sid=>bands().find(b=>b.sid===sid);
 const imgOf=imgs=>{if(!imgs||!imgs.length)return'';const s=imgs.slice().sort((a,b)=>(a.width||0)-(b.width||0));return(s.find(i=>(i.width||0)>=160)||s[s.length-1]).url};
-function addArtist(a,extra={}){
-  if(!a||!a.id||!a.name)return{b:null,isNew:false}; // a = objeto artista de Spotify (completo o simplificado)
+function addArtist(a,extra={},force=false){
+  if(!a||!a.id||!a.name)return{b:null,isNew:false};
+  D.ignored=D.ignored||{};if(D.ignored[a.id]){if(!force&&!bandBySid(a.id))return{b:null,isNew:false,ignored:true};delete D.ignored[a.id]} // a = objeto artista de Spotify (completo o simplificado)
   let b=bandBySid(a.id);
   if(b){if(a.genres&&a.genres.length&&!(b.spGenres||[]).length)b.spGenres=a.genres;if(a.images&&a.images.length&&!b.img)b.img=imgOf(a.images);return{b,isNew:false}}
   b={id:rid(),sid:a.id,name:a.name,genreId:null,subId:null,parentId:null,note:'',spGenres:a.genres||[],img:imgOf(a.images),albums:[],hidden:[],fetchedAt:0,lastOpened:0,created:Date.now(),...extra};
@@ -402,9 +404,15 @@ function vGenre(){
 }
 function subRows(g,list,ct){return `<div class="list crate">${list.slice().sort(byName).map(x=>{const f=findAny(x.id),sh=twins(x).length>1,kids=sharedChildren(x).length;return `<button class="row" data-go="${J({k:'sub',g:f?f.g.id:g.id,s:x.id,cg:g.id,ct:ct||[]})}"><span class="tabmark"></span><span class="name divider">${esc(x.name)}${kids||sh?`<span class="sub" style="font-family:var(--body);text-transform:none;letter-spacing:0">${[kids?`${kids} subgénero${kids===1?'':'s'}`:'',sh?'compartido':''].filter(Boolean).join(' · ')}</span>`:''}</span><span class="meta">${countIn(g.id,x.id)}</span></button>`}).join('')}</div>`}
 function selList(list){return `<div class="list">${list.map(b=>`<label class="row chk" style="cursor:pointer"><input type="checkbox" data-sel="${b.id}" ${UI.sel.has(b.id)?'checked':''}>${thumb(b.img)}<span class="name">${esc(b.name)}<span class="sub">${esc((b.spGenres||[]).slice(0,4).join(' · ')||'—')}</span></span>${b.sid?`<a class="btn small spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener" title="Ver ${esc(b.name)} en Spotify">Spotify ↗</a>`:''}${UI.view.k==='unclassified'?`<button class="btn small danger" data-act="delOne" data-id="${b.id}" title="Quitar de mi colección" aria-label="Quitar ${esc(b.name)} de mi colección">✕</button>`:''}</label>`).join('')}</div>`}
+async function importFollowed(prog){let url='/me/following?type=artist&limit=50',n=0,added=0;while(url&&n++<100){const r=await sp(url);for(const ar of r.artists.items)if(addArtist(ar).isNew)added++;prog&&prog(bands().length);url=r.artists.next}return added}
+async function autoImport(){
+  if(!tok||cfg.autoImport===false||Date.now()<spBlocked)return;
+  if(Date.now()-(D.lastAuto||0)<20*3600e3)return;
+  try{const n=await importFollowed();D.lastAuto=Date.now();touch();if(n)say(`${n} grupo${n===1?'':'s'} nuevo${n===1?'':'s'} que sigues en Spotify ${n===1?'ha entrado':'han entrado'} en Sin clasificar.`);render()}catch(e){console.warn('autoImport',e)}
+}
 function removeBands(ids){const bs=[],kids=[];for(const id of ids){const b=D.bands[id];if(!b)continue;bs.push(JSON.parse(JSON.stringify(b)));for(const c of children(id))kids.push({id:c.id,parentId:c.parentId});}
   for(const k of kids){const c=D.bands[k.id];if(c&&ids.includes(c.parentId)){c.parentId=null}}
-  for(const b of bs){delete D.bands[b.id];UI.sel.delete(b.id)}
+  for(const b of bs){delete D.bands[b.id];UI.sel.delete(b.id);if(b.sid)D.ignored[b.sid]=b.name}
   UI.undo={bands:bs,kids};touch();render()}
 function getDests(){const out=[...(UI.dests||[])];const el=document.getElementById('f_move');const v=el&&el.value;if(v&&v!=='|'&&!out.includes(v))out.push(v);return out.map(d=>{const [g,sb]=d.split('|');return{g,s:sb||null}}).filter(d=>G(d.g))}
 function destChips(){return (UI.dests||[]).map((d,i)=>{const [g,sb]=d.split('|');return `<span class="dest">${esc(pName({g,s:sb||null}))}<button data-act="rmDest" data-i="${i}" aria-label="Quitar">✕</button></span>`}).join('')}
@@ -565,6 +573,11 @@ function vSettings(){
     <form id="f_code" class="btns"><input type="text" id="f_codein" placeholder="Código" autocomplete="off" style="flex:1;min-width:200px"><button class="btn small" type="submit">Usar código</button></form>`;
   }
   h+=`</div>`;
+  const ign=Object.entries(D.ignored||{}).sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'es'));
+  h+=`<div class="panel"><div class="divider" style="font-size:20px">Importación</div>
+  <label class="chk"><input type="checkbox" id="f_auto" ${cfg.autoImport===false?'':'checked'}> Al abrir la web, añadir a Sin clasificar los grupos nuevos que sigas en Spotify (como mucho una vez al día)</label>
+  <span class="hint">Bandas excluidas: las que has quitado de tu colección. No vuelven a entrar al importar; si las añades tú con + Banda, sí.</span>
+  ${ign.length?`<details><summary>${ign.length} banda${ign.length===1?'':'s'} excluida${ign.length===1?'':'s'}</summary><div class="list" style="margin-top:8px">${ign.map(([sid,name])=>`<div class="row"><span class="name">${esc(name)}</span><a class="btn small spot" href="https://open.spotify.com/artist/${esc(sid)}" target="_blank" rel="noopener">Spotify ↗</a><button class="btn small" data-act="unignore" data-sid="${esc(sid)}">Permitir de nuevo</button></div>`).join('')}</div><div class="btns" style="margin-top:8px"><button class="btn small" data-act="unignoreAll">Permitir todas de nuevo</button></div></details>`:'<span class="hint">Ninguna todavía.</span>'}</div>`;
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Mantenimiento</div><div class="btns"><button class="btn" data-act="fetchAll" ${UI.busy||!tok?'disabled':''}>Cargar todas las discografías</button></div>${UI.busy?`<div class="notice">${esc(UI.busy)}</div>`:''}<span class="hint">Si no, cada discografía se carga al abrir la banda y se refresca cada 30 días.</span></div>`;
   return h;
 }
@@ -647,14 +660,14 @@ app.addEventListener('click',async e=>{
     case'plAll':{const all=UI.playlists.every(p=>p.on);UI.playlists.forEach(p=>p.on=!all);render();break}
     case'simAdd':case'simRel':{
       const cur=D.bands[v.id],ar=(UI.sim[cur.sid]||[]).find(x=>x.id===a.dataset.sid);if(!ar)return;
-      const {b,isNew}=addArtist(ar);if(!b)return;
+      const {b,isNew}=addArtist(ar,{},true);if(!b)return;
       if(act==='simRel'){b.parentId=cur.id;b.genreId=null;b.subId=null;b.also=[];say(`${b.name} colgada de ${cur.name} como relacionada.`)}
       else{const ps=places(cur),cx=v.from&&ps.find(p=>p.g===v.from.g&&p.s===(v.from.s||null)),pl=cx||ps[0];if(pl)addAlso(b,pl.g,pl.s);say(`${b.name} añadida a tu colección`+(pl?` en ${pName(pl)}.`:' (sin clasificar).'))}
       touch();if(isNew)fetchDisco(b).catch(()=>{});render();break}
     case'pickArtist':{
       const ar=(UI.spResults||[]).find(x=>x.id===a.dataset.sid);if(!ar)return;
       const pg=UI.form.parentId,note=(document.getElementById('f_note')?.value||'').trim();
-      const {b,isNew}=addArtist(ar);if(!b)return;
+      const {b,isNew}=addArtist(ar,{},true);if(!b)return;
       if(pg&&pg!==b.id){b.parentId=pg;b.genreId=null;b.subId=null;if(note)b.note=note}
       else if(v.k==='sub'||v.k==='genre'){addAlso(b,v.g,v.k==='sub'?v.s:null);touch();say(`${b.name} añadida a ${v.k==='sub'?SG(G(v.g),v.s).name:G(v.g).name}.`);if(isNew)fetchDisco(b).catch(()=>{});setTimeout(()=>{const el=document.getElementById('f_sq');el&&el.focus()},0);break}
       touch();
@@ -677,7 +690,9 @@ app.addEventListener('click',async e=>{
     case'selMode':UI.selMode=!UI.selMode;UI.sel.clear();render();break;
     case'delOne':{e.preventDefault();removeBands([a.dataset.id]);break}
     case'delSel':removeBands([...UI.sel]);break;
-    case'undo':{const u=UI.undo;if(!u)break;for(const b of u.bands)D.bands[b.id]=b;for(const k of u.kids){const c=D.bands[k.id];if(c)c.parentId=k.parentId}UI.undo=null;touch();render();break}
+    case'unignore':{delete D.ignored[a.dataset.sid];touch();say('Esa banda podrá volver a entrar al importar.');break}
+    case'unignoreAll':{D.ignored={};touch();say('Todas las bandas excluidas podrán volver a entrar al importar.');break}
+    case'undo':{const u=UI.undo;if(!u)break;for(const b of u.bands){D.bands[b.id]=b;if(b.sid)delete D.ignored[b.sid]}for(const k of u.kids){const c=D.bands[k.id];if(c)c.parentId=k.parentId}UI.undo=null;touch();render();break}
     case'addDest':{const val=document.getElementById('f_move').value;if(!val||val==='|'){say('Elige una rama en la lista.',true);return}UI.dests=UI.dests||[];if(!UI.dests.includes(val))UI.dests.push(val);render();break}
     case'rmDest':UI.dests.splice(+a.dataset.i,1);render();break;
     case'addSel':{const ds=getDests();if(!ds.length){say('Elige un destino en la lista.',true);return}let n=0;for(const id of UI.sel){const b=D.bands[id];if(!b)continue;let any=false;for(const d of ds)if(addAlso(b,d.g,d.s))any=true;if(any)n++}UI.dests=[];UI.sel.clear();touch();UI.selMode=false;say(`${n} añadida${n===1?'':'s'} también a esa rama.`);break}
@@ -695,9 +710,9 @@ app.addEventListener('click',async e=>{
       if(w==='genre'){for(const b of bands()){if(b.genreId===v.g){b.genreId=null;b.subId=null}b.also=(b.also||[]).filter(x=>x.g!==v.g);fixPrimary(b)}D.tree.genres=D.tree.genres.filter(g=>g.id!==v.g);touch();go({k:'home'})}
       else if(w==='sub'&&twins(SG(G(v.g),v.s)).length>1){const g=G(v.g),fs=findSub(g,v.s),tw=twins(fs.s).find(t=>t.s!==fs.s),parent=fs.path.length?fs.path[fs.path.length-1]:null;for(const b of bands()){if(b.subId===v.s){b.genreId=tw.g.id;b.subId=tw.s.id}for(const x of b.also||[])if(x.s===v.s){x.g=tw.g.id;x.s=tw.s.id}b.also=(b.also||[]).filter((x,i,arr)=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null))&&arr.findIndex(y=>y.g===x.g&&(y.s||null)===(x.s||null))===i)}const moved=[];walk(fs.s.subs,x=>moved.push(x.id));for(const b of bands()){if(moved.includes(b.subId))b.genreId=tw.g.id;for(const x of b.also||[])if(moved.includes(x.s))x.g=tw.g.id}tw.s.subs=tw.s.subs.concat(fs.s.subs);const host=parent||g;host.subs=host.subs.filter(x=>x.id!==v.s);touch();go(parent?{k:'sub',g:g.id,s:parent.id}:{k:'genre',g:g.id})}
       else if(w==='sub'){const g=G(v.g),fs=findSub(g,v.s),parent=fs.path.length?fs.path[fs.path.length-1]:null,ids=new Set(descIds(fs.s));for(const b of bands()){if(b.genreId===v.g&&ids.has(b.subId))b.subId=parent?parent.id:null;for(const x of b.also||[])if(x.g===v.g&&ids.has(x.s))x.s=parent?parent.id:null;b.also=(b.also||[]).filter((x,i,arr)=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null))&&arr.findIndex(y=>y.g===x.g&&(y.s||null)===(x.s||null))===i)}const host=parent||g;host.subs=host.subs.filter(x=>x.id!==v.s);touch();go(parent?{k:'sub',g:g.id,s:parent.id}:{k:'genre',g:g.id})}
-      else if(w==='band'){const b=D.bands[v.id];const pl=placeOf(b);for(const c of children(b.id)){c.parentId=null;c.genreId=null;c.subId=null}delete D.bands[b.id];touch();go(b.parentId&&D.bands[b.parentId]?{k:'band',id:b.parentId}:pl.s?{k:'sub',g:pl.g.id,s:pl.s.id}:pl.g?{k:'genre',g:pl.g.id}:{k:'home'})}
+      else if(w==='band'){const b=D.bands[v.id];const pl=placeOf(b);if(b.sid)D.ignored[b.sid]=b.name;for(const c of children(b.id)){c.parentId=null;c.genreId=null;c.subId=null}delete D.bands[b.id];touch();go(b.parentId&&D.bands[b.parentId]?{k:'band',id:b.parentId}:pl.s?{k:'sub',g:pl.g.id,s:pl.s.id}:pl.g?{k:'genre',g:pl.g.id}:{k:'home'})}
       break}
-    case'impFollow':runImport('Leyendo artistas seguidos…',async prog=>{let url='/me/following?type=artist&limit=50',n=0,added=0;while(url&&n++<100){const r=await sp(url);for(const ar of r.artists.items)if(addArtist(ar).isNew)added++;prog(bands().length);url=r.artists.next}return added});break;
+    case'impFollow':runImport('Leyendo artistas seguidos…',importFollowed);break;
     case'impSaved':runImport('Leyendo álbumes guardados…',async prog=>{const items=await spAll('/me/albums?limit=50');let added=0;for(const it of items){const ar=it.album&&it.album.artists&&it.album.artists[0];if(ar&&addArtist(ar).isNew)added++}prog(items.length);return added});break;
     case'loadPlaylists':runImport('Leyendo tus listas…',async()=>{const me=await sp('/me');const pls=await spAll('/me/playlists?limit=50');UI.playlists=pls.filter(p=>p&&(p.owner?.id===me.id||p.collaborative)).map(p=>({id:p.id,name:p.name,n:(p.items||p.tracks||{}).total,on:false}));return null});break;
     case'impPlaylists':{const chosen=(UI.playlists||[]).filter(p=>p.on);if(!chosen.length){say('Marca al menos una lista.',true);return}
@@ -711,6 +726,7 @@ app.addEventListener('click',async e=>{
 app.addEventListener('change',e=>{
   if(e.target.dataset.sel){e.target.checked?UI.sel.add(e.target.dataset.sel):UI.sel.delete(e.target.dataset.sel);const m=document.querySelector('.bar .meta');if(m)m.textContent=UI.sel.size+' marcadas';document.querySelectorAll('[data-act="moveSel"],[data-act="addSel"],[data-act="delSel"]').forEach(btn=>btn.disabled=!UI.sel.size)}
   if(e.target.dataset.pl){const p=UI.playlists.find(x=>x.id===e.target.dataset.pl);if(p)p.on=e.target.checked}
+  if(e.target.id==='f_auto'){cfg.autoImport=e.target.checked;LS.set('md_cfg',cfg);return}
   if(e.target.id==='f_favplace'){UI.view={...UI.view,place:e.target.value};render();return}
   if(e.target.id==='f_rtplace'){UI.view={...UI.view,place:e.target.value};render();return}
   if(e.target.id==='f_parent'){const l=document.getElementById('placeLbl');if(l)l.hidden=!!e.target.value}
@@ -741,7 +757,7 @@ function renderInner(){
 function showFatal(e){console.error(e);app.innerHTML=`<header class="top"><button class="brand" onclick="location.reload()">Spotify <span>Soul</span></button></header><div class="notice err"><b>Algo ha fallado al mostrar la colección.</b> Copia este mensaje y pásaselo a Claude:<br><code>${esc((e&&e.message)||e)}</code><br><code>${esc(((e&&e.stack)||'').split('\n').slice(0,3).join(' | '))}</code></div><div class="btns"><button class="btn" onclick="location.reload()">Recargar</button></div>`}
 window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(ev.error||ev.message)});
 window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
-(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{render()}catch(e){showFatal(e)}await pullRemote();})();
+(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();})();
 })();
 </script>
 </body>
