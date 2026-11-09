@@ -13,7 +13,7 @@
 /* Una columna tipo explorador de carpetas: ruta arriba, separadores de cajón, lista abajo */
 :root{
   --bg:#0a0c0b;--surface:rgba(22,25,23,.84);--fg:#eef2ef;--muted:#a1aaa4;--line:rgba(255,255,255,.10);
-  --accent:#1ed760;--accent-ink:#04110a;--star:#ffc23d;--tab:rgba(30,215,96,.13);--danger:#ff7b72;--spot:#1db954;
+  --accent:#1ed760;--accent-ink:#04110a;--star:#ffc23d;--heart:#ff5a76;--tab:rgba(30,215,96,.13);--danger:#ff7b72;--spot:#1db954;
   --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
@@ -81,6 +81,8 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--tab);padding:2px 
 .bar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.15)}
 .bar select{flex:1;min-width:160px}
 progress{width:100%}
+.heart{color:var(--heart)}
+.btn.favon{border-color:var(--heart);color:var(--heart)}
 #bg{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(1100px 620px at 8% -8%,rgba(30,215,96,.30),transparent 62%),radial-gradient(900px 520px at 105% 12%,rgba(30,215,96,.12),transparent 60%),radial-gradient(800px 600px at 50% 120%,rgba(30,215,96,.08),transparent 60%),var(--bg);overflow:hidden}
 #bg .cv{position:absolute;inset:-24px;background-size:cover;background-position:center;filter:blur(7px) saturate(1.1);transform:scale(1.04);opacity:0;transition:opacity .6s ease}
 #bg.on .cv{opacity:.9}
@@ -344,10 +346,13 @@ function rediscover(){const all=bands();if(!all.length)return null;const s=all.s
 /* ================= vistas ================= */
 const crumbs=parts=>`<nav class="path">`+parts.map((p,i)=>(i?'<span class="sep">/</span>':'')+(p.v?`<button data-go="${J(p.v)}">${esc(p.t)}</button>`:`<span>${esc(p.t)}</span>`)).join('')+`</nav>`;
 const thumb=src=>src?`<img src="${esc(src)}" alt="" loading="lazy">`:'';
+const favFirst=l=>l.slice().sort((a,b)=>(b.fav?1:0)-(a.fav?1:0)||byName(a,b));
+function favBtn(n){return `<button class="btn small${UI.favOnly?' favon':''}" data-act="favOnly" aria-pressed="${!!UI.favOnly}">${UI.favOnly?'♥ Viendo favoritas':'♡ Solo favoritas'}${n?` (${n})`:''}</button>`}
+function favList(list,showPath){return list.length?`<div class="list">${favFirst(list).map(b=>bandRow(b,showPath)).join('')}</div>`:`<div class="empty">No hay favoritas aquí todavía. Márcalas con ♡ dentro de cada banda.</div>`}
 function bandRow(b,showPath){
   const n=(b.albums||[]).filter(a=>a.type==='album').length,pk=(b.picked||[]).length,rel=children(b.id).length,pl=placeOf(b);
   const meta=showPath?((placeName(b)||'sin clasificar')+(places(b).length>1?` +${places(b).length-1}`:'')):(b.fetchedAt?(pk?`${pk} de ${n} discos`:`${n} disco${n===1?'':'s'}`):'')+(rel?` · ${rel} rel.`:'');
-  return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${esc(b.name)}</span><span class="meta">${esc(meta)}</span></button>`;
+  return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}</span><span class="meta">${esc(meta)}</span></button>`;
 }
 function vSetup(){
   return `<h1>Primera configuración</h1>
@@ -370,16 +375,20 @@ function vHome(){
   if(p){const pl=placeOf(p);h+=`<div class="pick">${p.img?`<img src="${esc(p.img)}" alt="">`:''}<div class="in"><span class="lbl">Redescubre · ${esc(ago(p.lastOpened))}</span><div class="divider">${esc(p.name)}</div><span class="hint">${esc(placeName(p)||'Sin clasificar')}</span><div class="btns"><button class="btn primary small" data-go="${J({k:'band',id:p.id})}">Abrir</button><button class="btn small" data-act="reroll">Otra</button></div></div></div>`}
   const gs=D.tree.genres.slice().sort(byName),un=unclassified().length;
   h+=`<div class="section"><h2>Géneros</h2>`+(gs.length||un?`<div class="list crate">${gs.map(g=>`<button class="row" data-go="${J({k:'genre',g:g.id})}"><span class="tabmark"></span><span class="name divider">${esc(g.name)}</span><span class="meta">${countIn(g.id)}</span></button>`).join('')}${un?`<button class="row" data-go="${J({k:'unclassified'})}"><span class="tabmark" style="opacity:.3"></span><span class="name divider" style="color:var(--muted)">Sin clasificar</span><span class="meta">${un}</span></button>`:''}</div>`:`<div class="empty">Crea tu primer género, por ejemplo <b>Metal</b>, y dentro sus subgéneros.</div>`)+`</div>`;
-  h+=`<div class="btns"><button class="btn primary" data-act="newGenre">+ Género</button><button class="btn" data-act="addBand">+ Banda</button><button class="btn" data-go="${J({k:'import'})}">Importar de Spotify</button><button class="btn" data-go="${J({k:'forgotten'})}">Olvidadas</button><button class="btn" data-go="${J({k:'unclassified'})}">Clasificar con Claude</button></div>`;
+  h+=`<div class="btns"><button class="btn primary" data-act="newGenre">+ Género</button><button class="btn" data-act="addBand">+ Banda</button><button class="btn" data-go="${J({k:'import'})}">Importar de Spotify</button><button class="btn" data-go="${J({k:'favs'})}"><span class="heart">♥</span> Favoritas</button><button class="btn" data-go="${J({k:'forgotten'})}">Olvidadas</button><button class="btn" data-go="${J({k:'unclassified'})}">Clasificar con Claude</button></div>`;
   if(UI.form)h+=formHtml();
   return h;
 }
 function vGenre(){
   const g=G(UI.view.g);if(!g)return fallback();
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:g.name}])+`<h1>${esc(g.name)}</h1>`;
+  const gids=new Set();for(const x of g.subs)shareIds(x).forEach(i=>gids.add(i));
+  const favs=topBands(b=>b.fav&&places(b).some(p=>p.g===g.id||gids.has(p.s)));
+  h+=`<div class="btns">${favBtn(favs.length)}</div>`;
+  if(UI.favOnly)return h+`<div class="section"><h2>Favoritas en ${esc(g.name)}</h2>${favList(favs,true)}</div>`;
   const subs=g.subs.slice().sort(byName);
   h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?subRows(g,subs,[]):`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
-  const loose=topBands(b=>places(b).some(p=>p.g===g.id&&!SG(g,p.s)));
+  const loose=favFirst(topBands(b=>places(b).some(p=>p.g===g.id&&!SG(g,p.s))));
   if(loose.length)h+=`<div class="section"><h2>Sin subgénero</h2>${UI.selMode?selList(loose):`<div class="list">${loose.map(b=>bandRow(b)).join('')}</div>`}</div>`;
   h+=`<div class="btns"><button class="btn primary" data-act="addBand">+ Banda</button><button class="btn" data-act="newSub">+ Subgénero</button>${loose.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameGenre">Renombrar</button><button class="btn danger" data-act="delGenre">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'')+(UI.selMode&&loose.length?selBar(true):'');
@@ -394,10 +403,13 @@ function vSub(){
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:cg.name,v:{k:'genre',g:cg.id}},...trail.map((f,i)=>({t:f.s.name,v:{k:'sub',g:f.g.id,s:f.s.id,cg:cg.id,ct:trail.slice(0,i).map(z=>z.s.id)}})),{t:s.name}])+`<h1>${esc(s.name)}</h1>`;
   const tw=twins(s).filter(t=>t.s!==s);
   if(tw.length)h+=`<div class="btns"><span class="hint">Compartido con:</span>${tw.map(t=>`<button class="btn small" data-go="${J({k:'sub',g:t.g.id,s:t.s.id})}">${esc([t.g.name,...t.path.map(z=>z.name),t.s.name].join(' / '))}</button>`).join('')}</div>`;
+  const sids=shareIds(s),sfavs=topBands(b=>b.fav&&places(b).some(p=>sids.has(p.s)));
+  h+=`<div class="btns">${favBtn(sfavs.length)}</div>`;
+  if(UI.favOnly)return h+`<div class="section"><h2>Favoritas en ${esc(s.name)}</h2>${favList(sfavs,true)}</div>`;
   const kids=sharedChildren(s);
   if(kids.length)h+=`<div class="section"><h2>Subgéneros</h2>${subRows(cg,kids,trail.map(z=>z.s.id).concat(s.id))}</div>`;
   const same=new Set(twins(s).map(t=>t.s.id).concat(s.id));
-  const list=topBands(b=>places(b).some(p=>same.has(p.s)));
+  const list=favFirst(topBands(b=>places(b).some(p=>same.has(p.s))));
   h+=`<div class="section">${kids.length?`<h2>Bandas en ${esc(s.name)}</h2>`:''}`+(list.length?(UI.selMode?selList(list):`<div class="list">${list.map(b=>bandRow(b)).join('')}</div>`):(kids.length?'':`<div class="empty">Ninguna banda aquí todavía. Muévelas desde “Sin clasificar” o crea subgéneros dentro.</div>`))+`</div>`;
   h+=`<div class="btns"><button class="btn primary" data-act="addBand">+ Banda</button><button class="btn" data-act="newSub">+ Subgénero</button>${list.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameSub">Renombrar</button><button class="btn danger" data-act="delSub">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'')+(UI.selMode&&list.length?selBar(true):'');
@@ -441,7 +453,7 @@ function vBand(){
   const chain=[];let x=b;while(x.parentId&&D.bands[x.parentId]&&chain.length<10){x=D.bands[x.parentId];chain.unshift(x)}
   chain.forEach(c=>parts.push({t:c.name,v:{k:'band',id:c.id}}));parts.push({t:b.name});
   let h=crumbs(parts)+`<div class="hero">${b.img?`<img src="${esc(b.img)}" alt="">`:''}<div class="in"><h1>${esc(b.name)}</h1>${b.note?`<span class="hint">${esc(b.note)}</span>`:''}${(b.spGenres||[]).length?`<div class="tags">${b.spGenres.slice(0,6).map(g=>`<span class="tag">${esc(g)}</span>`).join('')}</div>`:''}</div></div>`;
-  h+=`<div class="btns">${b.sid?`<a class="btn spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener">Abrir en Spotify</a>`:''}<button class="btn" data-act="editBand">Mover / editar</button>${b.sid&&tok?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:''}</div>`;
+  h+=`<div class="btns">${b.sid?`<a class="btn spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener">Abrir en Spotify</a>`:''}<button class="btn${b.fav?' favon':''}" data-act="favBand" aria-pressed="${!!b.fav}">${b.fav?'♥ Favorita':'♡ Favorita'}</button><button class="btn" data-act="editBand">Mover / editar</button>${b.sid&&tok?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:''}</div>`;
   if(others.length&&!b.parentId)h+=`<div class="btns"><span class="hint">También en:</span>${others.map(p=>`<button class="btn small" data-go="${J(p.s?{k:'sub',g:p.g,s:p.s}:{k:'genre',g:p.g})}">${esc(pName(p))}</button>`).join('')}</div>`;
   if(UI.form)h+=formHtml();if(UI.confirm)h+=confirmHtml();
   if(UI.busy)h+=`<div class="notice">${esc(UI.busy)}</div>`;
@@ -488,6 +500,7 @@ function vBand(){
   }
   return h;
 }
+function vFavs(){const l=topBands(b=>b.fav);return crumbs([{t:'Inicio',v:{k:'home'}},{t:'Favoritas'}])+`<h1>Favoritas</h1>`+favList(l,true)}
 function vForgotten(){
   const list=bands().sort((a,b)=>(a.lastOpened||0)-(b.lastOpened||0)).slice(0,100);
   return crumbs([{t:'Inicio',v:{k:'home'}},{t:'Olvidadas'}])+`<h1>Olvidadas</h1><span class="hint">Las que llevas más tiempo sin abrir, primero.</span>`+(list.length?`<div class="list">${list.map(b=>`<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${esc(b.name)}</span><span class="meta">${esc(ago(b.lastOpened))}</span></button>`).join('')}</div>`:`<div class="empty">Todavía no hay bandas.</div>`);
@@ -617,6 +630,8 @@ app.addEventListener('click',async e=>{
       touch();
       if(pg){UI.form=null;render();fetchDisco(b).then(render).catch(()=>{})}else go({k:'band',id:b.id});
       break}
+    case'favBand':{const b=D.bands[v.id];b.fav=!b.fav;touch();render();break}
+    case'favOnly':UI.favOnly=!UI.favOnly;render();break;
     case'loadSim':loadSim(D.bands[v.id]);render();break;
     case'refetch':{const b=D.bands[v.id];UI.busy='Actualizando discografía…';render();try{await fetchDisco(b,true)}catch(err){say(spErr(err),true)}UI.busy=null;render();break}
     case'pick':{const b=D.bands[v.id],id=a.dataset.a,set=new Set(b.picked||[]);if(!set.size||UI.fullDisco)UI.fullDisco=true;set.has(id)?set.delete(id):set.add(id);b.picked=[...set];touch();render();break}
@@ -674,7 +689,7 @@ function render(){try{renderInner();paintBg()}catch(e){showFatal(e)}}
 function renderInner(){
   const keep={};document.querySelectorAll('#frm input,#frm select').forEach(el=>{if(el.id)keep[el.id]=el.value});
   const v=UI.view.k;
-  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
+  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
   let notes='';
   if(cfg.clientId&&!tok&&v!=='settings')notes+=`<div class="notice">Spotify no está conectado. <button class="btn small spot" data-act="login">Conectar</button></div>`;
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
