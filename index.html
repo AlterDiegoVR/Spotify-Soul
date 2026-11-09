@@ -114,7 +114,7 @@ const GIST_FILE='mi-discoteca.json';
 let cfg=LS.get('md_cfg',{clientId:'',ghToken:'',gistId:''});
 let tok=LS.get('md_tok',null);
 let D=LS.get('md_data',null)||{v:1,updated:0,tree:{genres:[]},bands:{}};
-const UI={fullDisco:false,showCode:false,view:{k:'home'},q:'',form:null,confirm:null,msg:null,busy:null,sel:new Set(),showSingles:false,spResults:null,playlists:null,syncState:'',pick:null};
+const UI={sim:{},fullDisco:false,showCode:false,view:{k:'home'},q:'',form:null,confirm:null,msg:null,busy:null,sel:new Set(),showSingles:false,spResults:null,playlists:null,syncState:'',pick:null};
 const app=document.getElementById('app');
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -295,10 +295,17 @@ async function fetchDisco(b,force){
 }
 
 /* ================= navegación ================= */
+async function loadSim(b){
+  const sid=b.sid;UI.sim[sid]='loading';
+  try{const r=await sp('/search?type=artist&limit=10&q='+encodeURIComponent(b.name));UI.sim[sid]=(r.artists.items||[]).filter(a=>a&&a.id!==sid)}
+  catch(e){UI.sim[sid]='error'}
+  if(UI.view.k==='band'&&D.bands[UI.view.id]&&D.bands[UI.view.id].sid===sid)render();
+}
 function go(v){
   if(v.k==='band'&&!v.from&&(UI.view.k==='sub'||UI.view.k==='genre'))v={...v,from:{g:UI.view.g,s:UI.view.s||null}};
   UI.view=v;UI.claudeOut=null;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
   if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];b.lastOpened=Date.now();touch();
+    if(b.sid&&tok&&!UI.sim[b.sid])loadSim(b);
     if(b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>30*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;say(e.message==='nologin'?'Conecta Spotify para cargar la discografía.':e.message,true)})}}
   render();window.scrollTo(0,0);
 }
@@ -435,6 +442,19 @@ function vBand(){
   h+=`<div class="section"><h2>Relacionados · ${rel.length}</h2><span class="hint">Discos en solitario, la banda que formaron después, nombres anteriores…</span>`;
   if(rel.length)h+=`<div class="list">${rel.map(r=>`<button class="row" data-go="${J({k:'band',id:r.id})}">${thumb(r.img)}<span class="name">${esc(r.name)}${r.note?`<span class="sub">${esc(r.note)}</span>`:''}</span><span class="meta">${r.fetchedAt?(r.albums||[]).filter(a=>a.type==='album').length+' discos':''}</span></button>`).join('')}</div>`;
   h+=`<div class="btns"><button class="btn" data-act="addRelated">+ Relacionado</button></div></div>`;
+  const sim=b.sid?UI.sim[b.sid]:null;
+  if(b.sid&&tok){
+    h+=`<div class="section"><h2>Parecidos en Spotify</h2>`;
+    if(sim==='loading'||!sim)h+=`<div class="empty">Buscando…</div>`;
+    else if(sim==='error')h+=`<div class="empty">No se pudieron cargar.</div>`;
+    else if(!sim.length)h+=`<div class="empty">Spotify no sugiere nada para esta banda.</div>`;
+    else{
+      h+=`<span class="hint">Sugerencias del buscador de Spotify. En bandas muy minoritarias pueden salir nombres parecidos sin relación.</span><div class="list">${sim.map(a=>{const mine=bandBySid(a.id);
+        return mine?`<button class="row" data-go="${J({k:'band',id:mine.id})}">${thumb(imgOf(a.images))}<span class="name">${esc(a.name)}<span class="sub">${esc((a.genres||[]).slice(0,3).join(' · '))}</span></span><span class="meta">${mine.parentId===b.id?'relacionado':'en tu colección'}</span></button>`
+        :`<div class="row">${thumb(imgOf(a.images))}<a class="name" href="https://open.spotify.com/artist/${esc(a.id)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${esc(a.name)}<span class="sub">${esc((a.genres||[]).slice(0,3).join(' · ')||'Abrir en Spotify')}</span></a><div class="btns" style="flex:none;gap:6px"><button class="btn small" data-act="simAdd" data-sid="${esc(a.id)}" title="Añadir a tu colección, en la misma rama que ${esc(b.name)}">+ Colección</button><button class="btn small" data-act="simRel" data-sid="${esc(a.id)}" title="Colgar de ${esc(b.name)} como relacionado">+ Relacionado</button></div></div>`}).join('')}</div>`;
+    }
+    h+=`</div>`;
+  }
   return h;
 }
 function vForgotten(){
@@ -450,6 +470,7 @@ function vImport(){
   h+=`<div class="list"><button class="row" data-act="impFollow" ${dis}><span class="name">Artistas que sigues<span class="sub">Trae también sus géneros de Spotify</span></span><span class="meta">→</span></button><button class="row" data-act="impSaved" ${dis}><span class="name">Artistas de tus álbumes guardados</span><span class="meta">→</span></button><button class="row" data-act="loadPlaylists" ${dis}><span class="name">Artistas de tus listas<span class="sub">Eliges qué listas</span></span><span class="meta">→</span></button></div>`;
   if(UI.playlists){
     h+=`<div class="section"><h2>Tus listas · ${UI.playlists.length}</h2><span class="hint">Solo se leen las listas creadas por ti o colaborativas. Se importa el artista principal de cada canción.</span><div class="list">${UI.playlists.map(p=>`<label class="row chk"><input type="checkbox" data-pl="${esc(p.id)}" ${p.on?'checked':''}><span class="name">${esc(p.name)}</span><span class="meta">${p.n??''}</span></label>`).join('')}</div><div class="btns"><button class="btn primary" data-act="impPlaylists" ${dis}>Importar artistas de las marcadas</button></div></div>`;
+    h=h.replace(`<h2>Tus listas · ${UI.playlists.length}</h2>`,`<div class="btns" style="justify-content:space-between"><h2>Tus listas · ${UI.playlists.length}</h2><button class="btn small" data-act="plAll" ${dis}>${UI.playlists.every(p=>p.on)?'Desmarcar todas':'Marcar todas'}</button></div>`);
   }
   return h;
 }
@@ -549,6 +570,13 @@ app.addEventListener('click',async e=>{
     case'addRelated':open({t:'spsearch',parentId:v.id});break;
     case'editBand':open({t:'edit'});break;
     case'cancel':UI.form=null;UI.confirm=null;render();break;
+    case'plAll':{const all=UI.playlists.every(p=>p.on);UI.playlists.forEach(p=>p.on=!all);render();break}
+    case'simAdd':case'simRel':{
+      const cur=D.bands[v.id],ar=(UI.sim[cur.sid]||[]).find(x=>x.id===a.dataset.sid);if(!ar)return;
+      const {b,isNew}=addArtist(ar);
+      if(act==='simRel'){b.parentId=cur.id;b.genreId=null;b.subId=null;b.also=[];say(`${b.name} colgada de ${cur.name} como relacionada.`)}
+      else{const ps=places(cur),cx=v.from&&ps.find(p=>p.g===v.from.g&&p.s===(v.from.s||null)),pl=cx||ps[0];if(pl)addAlso(b,pl.g,pl.s);say(`${b.name} añadida a tu colección`+(pl?` en ${pName(pl)}.`:' (sin clasificar).'))}
+      touch();if(isNew)fetchDisco(b).catch(()=>{});render();break}
     case'pickArtist':{
       const ar=(UI.spResults||[]).find(x=>x.id===a.dataset.sid);if(!ar)return;
       const pg=UI.form.parentId,note=(document.getElementById('f_note')?.value||'').trim();
