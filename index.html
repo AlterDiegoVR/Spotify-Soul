@@ -344,7 +344,7 @@ function vGenre(){
   h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?subRows(g,subs,[]):`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
   const loose=topBands(b=>places(b).some(p=>p.g===g.id&&!SG(g,p.s)));
   if(loose.length)h+=`<div class="section"><h2>Sin subgénero</h2>${UI.selMode?selList(loose):`<div class="list">${loose.map(b=>bandRow(b)).join('')}</div>`}</div>`;
-  h+=`<div class="btns"><button class="btn primary" data-act="newSub">+ Subgénero</button>${loose.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameGenre">Renombrar</button><button class="btn danger" data-act="delGenre">Borrar</button></div>`;
+  h+=`<div class="btns"><button class="btn primary" data-act="addBand">+ Banda</button><button class="btn" data-act="newSub">+ Subgénero</button>${loose.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameGenre">Renombrar</button><button class="btn danger" data-act="delGenre">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'')+(UI.selMode&&loose.length?selBar(true):'');
 }
 function subRows(g,list,ct){return `<div class="list crate">${list.slice().sort(byName).map(x=>{const f=findAny(x.id),sh=twins(x).length>1,kids=sharedChildren(x).length;return `<button class="row" data-go="${J({k:'sub',g:f?f.g.id:g.id,s:x.id,cg:g.id,ct:ct||[]})}"><span class="tabmark"></span><span class="name divider">${esc(x.name)}${kids||sh?`<span class="sub" style="font-family:var(--body);text-transform:none;letter-spacing:0">${[kids?`${kids} subgénero${kids===1?'':'s'}`:'',sh?'compartido':''].filter(Boolean).join(' · ')}</span>`:''}</span><span class="meta">${countIn(g.id,x.id)}</span></button>`}).join('')}</div>`}
@@ -362,7 +362,7 @@ function vSub(){
   const same=new Set(twins(s).map(t=>t.s.id).concat(s.id));
   const list=topBands(b=>places(b).some(p=>same.has(p.s)));
   h+=`<div class="section">${kids.length?`<h2>Bandas en ${esc(s.name)}</h2>`:''}`+(list.length?(UI.selMode?selList(list):`<div class="list">${list.map(b=>bandRow(b)).join('')}</div>`):(kids.length?'':`<div class="empty">Ninguna banda aquí todavía. Muévelas desde “Sin clasificar” o crea subgéneros dentro.</div>`))+`</div>`;
-  h+=`<div class="btns"><button class="btn primary" data-act="newSub">+ Subgénero</button>${list.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameSub">Renombrar</button><button class="btn danger" data-act="delSub">Borrar</button></div>`;
+  h+=`<div class="btns"><button class="btn primary" data-act="addBand">+ Banda</button><button class="btn" data-act="newSub">+ Subgénero</button>${list.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameSub">Renombrar</button><button class="btn danger" data-act="delSub">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'')+(UI.selMode&&list.length?selBar(true):'');
 }
 function placeSelect(id,selG,selS,first){
@@ -483,8 +483,10 @@ function formHtml(){
     return wrap({genre:'Nuevo género',sub:'Nuevo subgénero',renameGenre:'Renombrar género',renameSub:'Renombrar subgénero'}[f.t],`<label>Nombre<input type="text" id="f_name" value="${esc(f.name||'')}" required></label>`,'Guardar');
   if(f.t==='spsearch'){
     const res=UI.spResults;
-    return wrap(f.parentId?'Añadir relacionado':'Añadir banda',`<div class="btns"><input type="search" id="f_sq" placeholder="Nombre del artista en Spotify" value="${esc(f.q||'')}" style="flex:1;min-width:180px"><button class="btn small" type="submit">Buscar</button></div>`+
-      (res?(res.length?`<div class="list">${res.map(a=>`<button type="button" class="row" data-act="pickArtist" data-sid="${esc(a.id)}">${thumb(imgOf(a.images))}<span class="name">${esc(a.name)}<span class="sub">${esc((a.genres||[]).slice(0,3).join(' · '))}</span></span><span class="meta">${bandBySid(a.id)?'ya está':'+'}</span></button>`).join('')}</div>`:`<div class="empty">Sin resultados.</div>`):'')+
+    const here=UI.view.k==='sub'?SG(G(UI.view.g),UI.view.s):UI.view.k==='genre'?G(UI.view.g):null;
+    const st=a=>{const b=bandBySid(a.id);if(!b)return'+';if(here&&!f.parentId&&(UI.view.k==='sub'?inPlace(b,UI.view.g,UI.view.s):places(b).some(p=>p.g===UI.view.g)))return'✓ aquí';return here&&!f.parentId?'+ (ya la tienes)':'ya está'};
+    return wrap(f.parentId?'Añadir relacionado':here?'Añadir banda a '+esc(here.name):'Añadir banda',`<div class="btns"><input type="search" id="f_sq" placeholder="Nombre del artista en Spotify" value="${esc(f.q||'')}" style="flex:1;min-width:180px"><button class="btn small" type="submit">Buscar</button></div>`+
+      (res?(res.length?`<div class="list">${res.map(a=>`<button type="button" class="row" data-act="pickArtist" data-sid="${esc(a.id)}">${thumb(imgOf(a.images))}<span class="name">${esc(a.name)}<span class="sub">${esc((a.genres||[]).slice(0,3).join(' · '))}</span></span><span class="meta">${st(a)}</span></button>`).join('')}</div>`:`<div class="empty">Sin resultados.</div>`):'')+
       (f.parentId?`<label>Nota (opcional)<input type="text" id="f_note" placeholder="p. ej. disco en solitario del cantante"></label>`:''),'');
   }
   if(f.t==='edit'){
@@ -552,8 +554,7 @@ app.addEventListener('click',async e=>{
       const pg=UI.form.parentId,note=(document.getElementById('f_note')?.value||'').trim();
       const {b,isNew}=addArtist(ar);
       if(pg&&pg!==b.id){b.parentId=pg;b.genreId=null;b.subId=null;if(note)b.note=note}
-      else if(isNew&&v.k==='sub'){b.genreId=v.g;b.subId=v.s}
-      else if(isNew&&v.k==='genre'){b.genreId=v.g}
+      else if(v.k==='sub'||v.k==='genre'){addAlso(b,v.g,v.k==='sub'?v.s:null);touch();say(`${b.name} añadida a ${v.k==='sub'?SG(G(v.g),v.s).name:G(v.g).name}.`);if(isNew)fetchDisco(b).catch(()=>{});setTimeout(()=>{const el=document.getElementById('f_sq');el&&el.focus()},0);break}
       touch();
       if(pg){UI.form=null;render();fetchDisco(b).then(render).catch(()=>{})}else go({k:'band',id:b.id});
       break}
