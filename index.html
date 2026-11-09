@@ -163,22 +163,24 @@ async function applyCode(code){
   catch(e){say('No se pudo cargar la colección: '+e.message,true)}
   render();
 }
-function exportForClaude(){
+function exportForClaude(all){
   const nodes=[];for(const g of D.tree.genres.slice().sort(byName)){nodes.push({id:g.id,ruta:g.name});const rec=(list,pre)=>{for(const x of list.slice().sort(byName)){const r=pre+' / '+x.name;nodes.push({id:x.id,ruta:r});rec(x.subs,r)}};rec(g.subs,g.name)}
-  const bs=unclassified().map(b=>{const o={id:b.id,nombre:b.name};if((b.spGenres||[]).length)o.spotify=b.spGenres.slice(0,5);return o});
-  return JSON.stringify({mi_discoteca:'clasificar',generos:nodes,bandas:bs});
+  const src=all?topBands(()=>true):unclassified();
+  const bs=src.map(b=>{const o={id:b.id,nombre:b.name};if((b.spGenres||[]).length)o.spotify=b.spGenres.slice(0,5);if(all)o.en=places(b).map(p=>p.s||p.g);return o});
+  return JSON.stringify({mi_discoteca:all?'reubicar':'clasificar',generos:nodes,bandas:bs});
 }
 function applyClaude(text){
   let o;const m=String(text).match(/\{[\s\S]*\}/);try{o=JSON.parse(m?m[0]:text)}catch(_){say('No reconozco ese texto. Pega la respuesta de Claude entera, empezando por la llave {.',true);return}
   const list=Array.isArray(o.asignar)?o.asignar:Array.isArray(o.assign)?o.assign:[];
-  let ok=0,bad=0,kept=0;
+  let ok=0,bad=0,kept=0,moved=0;
   for(const it of list){const b=D.bands[it.id];const to=(it.a||it.to||[]).map(id=>G(id)?{g:id,s:null}:(f=>f?{g:f.g.id,s:id}:null)(findAny(id))).filter(Boolean);
     if(!b||!to.length){bad++;continue}
-    if(places(b).length||b.parentId){kept++;continue}
+    if((places(b).length||b.parentId)&&!it.mover){kept++;continue}
+    if(it.mover)moved++;
     b.parentId=null;b.genreId=to[0].g;b.subId=to[0].s;b.also=to.slice(1);fixPrimary(b);ok++}
   if(!ok&&kept){say('Todas esas bandas ya las habías colocado tú; no se ha cambiado nada.');return}
   if(!ok){say('No se ha aplicado nada. Comprueba que has pegado la respuesta correcta.',true);return}
-  touch();UI.view={k:'home'};say(`Clasificadas ${ok} banda${ok===1?'':'s'}.`+(kept?` ${kept} ya las habías colocado tú y no se han tocado.`:'')+(bad?` ${bad} no se pudieron aplicar.`:''));
+  touch();UI.view={k:'home'};say(`Clasificadas ${ok} banda${ok===1?'':'s'}`+(moved?` (${moved} cambiadas de sitio)`:'')+'.'+(kept?` ${kept} ya las habías colocado tú y no se han tocado.`:'')+(bad?` ${bad} no se pudieron aplicar.`:''));
 }
 async function pullRemote(){
   if(!cfg.ghToken||!cfg.gistId)return false;
@@ -354,7 +356,7 @@ function vHome(){
   if(p){const pl=placeOf(p);h+=`<div class="pick">${p.img?`<img src="${esc(p.img)}" alt="">`:''}<div class="in"><span class="lbl">Redescubre · ${esc(ago(p.lastOpened))}</span><div class="divider">${esc(p.name)}</div><span class="hint">${esc(placeName(p)||'Sin clasificar')}</span><div class="btns"><button class="btn primary small" data-go="${J({k:'band',id:p.id})}">Abrir</button><button class="btn small" data-act="reroll">Otra</button></div></div></div>`}
   const gs=D.tree.genres.slice().sort(byName),un=unclassified().length;
   h+=`<div class="section"><h2>Géneros</h2>`+(gs.length||un?`<div class="list crate">${gs.map(g=>`<button class="row" data-go="${J({k:'genre',g:g.id})}"><span class="tabmark"></span><span class="name divider">${esc(g.name)}</span><span class="meta">${countIn(g.id)}</span></button>`).join('')}${un?`<button class="row" data-go="${J({k:'unclassified'})}"><span class="tabmark" style="opacity:.3"></span><span class="name divider" style="color:var(--muted)">Sin clasificar</span><span class="meta">${un}</span></button>`:''}</div>`:`<div class="empty">Crea tu primer género, por ejemplo <b>Metal</b>, y dentro sus subgéneros.</div>`)+`</div>`;
-  h+=`<div class="btns"><button class="btn primary" data-act="newGenre">+ Género</button><button class="btn" data-act="addBand">+ Banda</button><button class="btn" data-go="${J({k:'import'})}">Importar de Spotify</button><button class="btn" data-go="${J({k:'forgotten'})}">Olvidadas</button></div>`;
+  h+=`<div class="btns"><button class="btn primary" data-act="newGenre">+ Género</button><button class="btn" data-act="addBand">+ Banda</button><button class="btn" data-go="${J({k:'import'})}">Importar de Spotify</button><button class="btn" data-go="${J({k:'forgotten'})}">Olvidadas</button><button class="btn" data-go="${J({k:'unclassified'})}">Clasificar con Claude</button></div>`;
   if(UI.form)h+=formHtml();
   return h;
 }
@@ -395,9 +397,9 @@ function placeSelect(id,selG,selS,first){
 function vUnclassified(){
   const list=unclassified();
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Sin clasificar'}])+`<h1>Sin clasificar</h1>`;
+  h+=`<div class="panel"><div class="divider" style="font-size:20px">Clasificar con Claude</div><span class="hint">1. Copia y pégaselo a Claude en el chat. “Sin clasificar” manda solo estas ${list.length}; “Toda la colección” manda también las ya colocadas, por si has creado géneros nuevos y quieres recolocar. 2. Pega aquí lo que te devuelva y pulsa Aplicar.</span><div class="btns"><button class="btn primary small" data-act="copyForClaude" ${list.length?'':'disabled'}>Copiar sin clasificar</button><button class="btn small" data-act="copyAllForClaude">Copiar toda la colección</button></div>${UI.claudeOut?`<textarea class="code" id="claudeout" readonly>${esc(UI.claudeOut)}</textarea>`:''}<form id="f_claude" class="panel" style="padding:0;border:0"><textarea class="code" id="f_claudein" placeholder="Pega aquí la respuesta de Claude"></textarea><div class="btns"><button class="btn small" type="submit">Aplicar clasificación</button></div></form></div>`;
   if(!list.length)return h+`<div class="empty">Todo clasificado.</div>`;
   if(!D.tree.genres.length)h+=`<div class="notice">Primero crea géneros y subgéneros en Inicio. Luego vuelve aquí para repartir las bandas.</div>`;
-  h+=`<div class="panel"><div class="divider" style="font-size:20px">Clasificar con Claude</div><span class="hint">1. Copia tus géneros y estas ${list.length} bandas y pégaselo a Claude. 2. Pega aquí lo que te devuelva y pulsa Aplicar.</span><div class="btns"><button class="btn primary small" data-act="copyForClaude">Copiar para Claude</button></div>${UI.claudeOut?`<textarea class="code" id="claudeout" readonly>${esc(UI.claudeOut)}</textarea>`:''}<form id="f_claude" class="panel" style="padding:0;border:0"><textarea class="code" id="f_claudein" placeholder="Pega aquí la respuesta de Claude"></textarea><div class="btns"><button class="btn small" type="submit">Aplicar clasificación</button></div></form></div>`;
   const auto=autoMatches();
   if(auto.length)h+=`<div class="panel"><span><b>${auto.length}</b> banda${auto.length===1?'':'s'} tienen en Spotify un género que coincide con uno de tus subgéneros.</span><div class="btns"><button class="btn primary small" data-act="autoClass">Clasificarlas</button></div></div>`;
   h+=`<span class="hint">Marca varias y muévelas de golpe con la barra de abajo. Debajo de cada nombre ves los géneros que les pone Spotify.</span>`;
@@ -612,7 +614,7 @@ app.addEventListener('click',async e=>{
     case'addAlso':{const b=D.bands[v.id],[gg,ss]=(document.getElementById('f_also').value||'|').split('|');if(!gg)return;if(!addAlso(b,gg,ss))say('Ya está en esa rama.',true);touch();render();break}
     case'selMode':UI.selMode=!UI.selMode;UI.sel.clear();render();break;
     case'addSel':{const [gg,ss]=(document.getElementById('f_move').value||'|').split('|');if(!gg){say('Elige un destino en la lista.',true);return}let n=0;for(const id of UI.sel){const b=D.bands[id];if(b&&addAlso(b,gg,ss))n++}UI.sel.clear();touch();UI.selMode=false;say(`${n} añadida${n===1?'':'s'} también a esa rama.`);break}
-    case'copyForClaude':{UI.claudeOut=exportForClaude();let ok=false;try{await navigator.clipboard.writeText(UI.claudeOut);ok=true}catch(_){}say(ok?'Copiado. Pégaselo a Claude en el chat.':'Selecciona todo el texto del recuadro y cópialo.');if(!ok)setTimeout(()=>{const t=document.getElementById('claudeout');t&&t.select()},0);break}
+    case'copyForClaude':case'copyAllForClaude':{UI.claudeOut=exportForClaude(act==='copyAllForClaude');let ok=false;try{await navigator.clipboard.writeText(UI.claudeOut);ok=true}catch(_){}say(ok?'Copiado. Pégaselo a Claude en el chat.':'Selecciona todo el texto del recuadro y cópialo.');if(!ok)setTimeout(()=>{const t=document.getElementById('claudeout');t&&t.select()},0);break}
     case'showCode':UI.showCode=true;render();break;
     case'copyCode':{const t=document.getElementById('codebox');try{await navigator.clipboard.writeText(t.value);say('Código copiado. Pásatelo al móvil y pégalo allí en Ajustes.')}catch(_){t.select();say('Selecciona el código y cópialo.')}break}
     case'syncNow':{const ch=await pullRemote();if(!ch)await pushRemote();render();break}
