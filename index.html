@@ -34,7 +34,8 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:12p
 .brand .logo{width:42px;height:42px;image-rendering:pixelated;flex:none}
 .dest{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 8px;border-radius:999px;background:var(--tab);color:var(--fg);border:1px solid var(--line)}
 .dest button{background:none;border:0;color:var(--muted);cursor:pointer;padding:0 2px;font-size:13px}
-.sync{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.sync{font-family:var(--mono);font-size:11.5px;color:var(--muted);background:none;border:0;cursor:pointer;padding:4px}
+.sync.bad{color:var(--danger);text-decoration:underline dotted}
 .path{font-family:var(--mono);font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:0}
 .path button{font:inherit;color:var(--accent);background:none;border:0;padding:2px 0;cursor:pointer}
 .path .sep{opacity:.5}
@@ -143,11 +144,11 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function say(text,err){UI.msg={text,err};render();clearTimeout(say.t);say.t=setTimeout(()=>{UI.msg=null;render()},6000)}
 
 /* ================= guardado + sincronización (Gist) ================= */
-let saveTimer=null,pushing=false,pendingPush=false;
-function touch(){D.updated=Date.now();LS.set('md_data',D);if(cfg.ghToken){clearTimeout(saveTimer);saveTimer=setTimeout(pushRemote,1500)}}
+let saveTimer=null,pushing=false,pendingPush=false,retryTimer=null,retryN=0;
+function touch(){D.updated=Date.now();LS.set('md_data',D);if(cfg.ghToken){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveTimer=null;pushRemote()},5000)}}
 async function gh(path,opts={}){
   const r=await fetch('https://api.github.com'+path,{...opts,headers:{'Authorization':'Bearer '+cfg.ghToken,'Accept':'application/vnd.github+json','Content-Type':'application/json',...(opts.headers||{})}});
-  if(!r.ok)throw new Error('GitHub '+r.status);
+  if(!r.ok){let m='';try{m=(await r.json()).message||''}catch(_){}const e=new Error('GitHub '+r.status+(m?': '+m:''));e.status=r.status;const ra=+(r.headers.get('retry-after')||0),rs=+(r.headers.get('x-ratelimit-reset')||0);e.wait=ra?ra*1000:(rs&&r.headers.get('x-ratelimit-remaining')==='0'?rs*1000-Date.now():0);throw e}
   return r.json();
 }
 async function pushRemote(){
@@ -161,7 +162,10 @@ async function pushRemote(){
       cfg.gistId=g.id;LS.set('md_cfg',cfg);
     }else await gh('/gists/'+cfg.gistId,{method:'PATCH',body});
     UI.syncState='Sincronizado';
-  }catch(e){UI.syncState='Sin sincronizar';console.error(e)}
+    UI.syncErr='';retryN=0;clearTimeout(retryTimer);
+  }catch(e){console.error(e);UI.syncState='Sin sincronizar';
+    UI.syncErr=e.status===401?'El token de GitHub no es válido o ha caducado. Pon uno nuevo en Ajustes.':e.status===404?'No encuentro el Gist de la colección. Revisa la sincronización en Ajustes.':(e.status===403||e.status===429)?'GitHub ha frenado los guardados por hacer demasiados seguidos. Se reintenta solo.':e.status===422?'GitHub ha rechazado los datos ('+e.message+').':'No se pudo conectar con GitHub ('+(e.message||'sin conexión')+'). Se reintenta solo.';
+    if(e.status!==401&&e.status!==404){retryN++;const wait=Math.min(Math.max(e.wait||0,30000*Math.pow(2,retryN-1)),15*60000);clearTimeout(retryTimer);retryTimer=setTimeout(pushRemote,wait)}}
   pushing=false;renderSync();
   if(pendingPush){pendingPush=false;pushRemote()}
 }
@@ -690,6 +694,7 @@ app.addEventListener('click',async e=>{
     case'selMode':UI.selMode=!UI.selMode;UI.sel.clear();render();break;
     case'delOne':{e.preventDefault();removeBands([a.dataset.id]);break}
     case'delSel':removeBands([...UI.sel]);break;
+    case'syncInfo':{if(UI.syncState==='Sin sincronizar'){say((UI.syncErr||'No se pudo guardar en GitHub.')+' Reintentando ahora…',true);clearTimeout(retryTimer);await pushRemote();if(UI.syncState==='Sincronizado')say('Sincronizado: los cambios ya están guardados en GitHub.')}else if(UI.syncState)say(UI.syncState==='Sincronizado'?'Todo guardado en GitHub.':UI.syncState);break}
     case'unignore':{delete D.ignored[a.dataset.sid];touch();say('Esa banda podrá volver a entrar al importar.');break}
     case'unignoreAll':{D.ignored={};touch();say('Todas las bandas excluidas podrán volver a entrar al importar.');break}
     case'undo':{const u=UI.undo;if(!u)break;for(const b of u.bands){D.bands[b.id]=b;if(b.sid)delete D.ignored[b.sid]}for(const k of u.kids){const c=D.bands[k.id];if(c)c.parentId=k.parentId}UI.undo=null;touch();render();break}
@@ -735,7 +740,7 @@ app.addEventListener('submit',e=>{e.preventDefault();submitForm(e.target.id)});
 app.addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;const pos=e.target.selectionStart;render();const q=document.getElementById('q');if(q){q.focus();try{q.setSelectionRange(pos,pos)}catch(_){}}}});
 
 /* ================= render ================= */
-function renderSync(){const s=document.getElementById('syncst');if(s)s.textContent=UI.syncState}
+function renderSync(){const s=document.getElementById('syncst');if(s){s.textContent=UI.syncState;s.title=UI.syncErr||'';s.classList.toggle('bad',UI.syncState==='Sin sincronizar')}}
 function bandCover(b){const al=(b.albums||[]).filter(a=>a.img&&!(b.hidden||[]).includes(a.id)),pk=new Set(b.picked||[]),mine=al.filter(a=>pk.has(a.id)),pool=mine.length?mine:al.filter(a=>a.type!=='single').length?al.filter(a=>a.type!=='single'):al;return pool.length?pool[Math.floor((UI.bgPick||0)*pool.length)%pool.length].img:(b.img||'')}
 function paintBg(){const el=document.getElementById('bg');if(!el)return;const b=UI.view.k==='band'&&D.bands[UI.view.id];const url=b?bandCover(b):'';const cv=el.firstElementChild;
   if(url){const css=`url("${url.replace(/"/g,'%22')}")`;if(cv.style.backgroundImage!==css)cv.style.backgroundImage=css;el.classList.add('on')}else el.classList.remove('on')}
@@ -749,7 +754,7 @@ function renderInner(){
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
   if(UI.undo)notes+=`<div class="notice">${UI.undo.bands.length===1?`“${esc(UI.undo.bands[0].name)}” quitada de tu colección.`:`${UI.undo.bands.length} bandas quitadas de tu colección.`} <button class="btn small" data-act="undo">Deshacer</button></div>`;
   const n=bands().length;
-  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt="">Spotify <span>Soul</span></button><div class="btns"><span class="sync" id="syncst">${esc(UI.syncState)}</span>${cfg.clientId?`<button class="btn small" data-act="settings">Ajustes</button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
+  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt="">Spotify <span>Soul</span></button><div class="btns"><button class="sync${UI.syncState==='Sin sincronizar'?' bad':''}" id="syncst" data-act="syncInfo" title="${esc(UI.syncErr||'')}">${esc(UI.syncState)}</button>${cfg.clientId?`<button class="btn small" data-act="settings">Ajustes</button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
   for(const id in keep){const el=document.getElementById(id);if(el&&el.type!=='checkbox')el.value=keep[id]}
 }
 
