@@ -197,6 +197,11 @@ function walk(list,fn,path=[]){for(const x of list||[]){fn(x,path);walk(x.subs,f
 function findSub(g,id){let r=null;if(g&&id)walk(g.subs,(x,p)=>{if(x.id===id)r={s:x,path:p}});return r}
 const SG=(g,id)=>{const r=findSub(g,id);return r&&r.s};
 const subPath=(g,id)=>{const r=findSub(g,id);return r?r.path.concat(r.s):[]};
+function findAny(id){for(const g of D.tree.genres){const r=findSub(g,id);if(r)return{g,s:r.s,path:r.path}}return null}
+function allSubs(){const out=[];for(const g of D.tree.genres)walk(g.subs,(x,p)=>out.push({g,s:x,path:p}));return out}
+const twins=x=>allSubs().filter(o=>norm(o.s.name)===norm(x.name));
+function shareIds(x){const ids=new Set(),st=[x];while(st.length){const n=st.pop();for(const t of twins(n)){if(ids.has(t.s.id))continue;ids.add(t.s.id);for(const c of t.s.subs)st.push(c)}}ids.add(x.id);return ids}
+function sharedChildren(x){const seen=new Map();for(const t of twins(x).sort((a,b)=>(a.s===x?-1:b.s===x?1:0)))for(const c of t.s.subs)if(!seen.has(norm(c.name)))seen.set(norm(c.name),c);for(const c of x.subs)if(!seen.has(norm(c.name)))seen.set(norm(c.name),c);return[...seen.values()]}
 function descIds(x){const ids=[x.id];walk(x.subs,y=>ids.push(y.id));return ids}
 function fixTree(){if(!D.tree||!Array.isArray(D.tree.genres))D.tree={genres:[]};for(const g of D.tree.genres){if(!Array.isArray(g.subs))g.subs=[];walk(g.subs,x=>{if(!Array.isArray(x.subs))x.subs=[]})}}
 function places(b){const r=rootOf(b),out=[];if(G(r.genreId))out.push({g:r.genreId,s:r.subId||null});for(const x of r.also||[])if(G(x.g)&&!out.some(o=>o.g===x.g&&o.s===(x.s||null)))out.push({g:x.g,s:x.s||null});return out}
@@ -210,7 +215,10 @@ const children=id=>bands().filter(b=>b.parentId===id).sort(byName);
 function rootOf(b){let x=b,n=0;while(x&&x.parentId&&D.bands[x.parentId]&&n++<10)x=D.bands[x.parentId];return x}
 function placeOf(b){const r=rootOf(b);const g=G(r.genreId);return{g,s:SG(g,r.subId)}}
 const topBands=f=>bands().filter(b=>!b.parentId&&f(b)).sort(byName);
-const countIn=(gid,sid)=>{const ids=sid===undefined?null:new Set(descIds(SG(G(gid),sid)||{id:sid}));return bands().filter(b=>places(b).some(p=>p.g===gid&&(!ids||ids.has(p.s)))).length};
+function countIn(gid,sid){
+  if(sid!==undefined){const f=findAny(sid);const ids=f?shareIds(f.s):new Set([sid]);return bands().filter(b=>places(b).some(p=>ids.has(p.s))).length}
+  const g=G(gid),ids=new Set();if(g)for(const x of g.subs)shareIds(x).forEach(i=>ids.add(i));
+  return bands().filter(b=>places(b).some(p=>p.g===gid||ids.has(p.s))).length}
 const unclassified=()=>topBands(b=>!places(b).length);
 const bandBySid=sid=>bands().find(b=>b.sid===sid);
 const imgOf=imgs=>{if(!imgs||!imgs.length)return'';const s=imgs.slice().sort((a,b)=>(a.width||0)-(b.width||0));return(s.find(i=>(i.width||0)>=160)||s[s.length-1]).url};
@@ -286,22 +294,27 @@ function vGenre(){
   const g=G(UI.view.g);if(!g)return fallback();
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:g.name}])+`<h1>${esc(g.name)}</h1>`;
   const subs=g.subs.slice().sort(byName);
-  h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?subRows(g,subs):`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
+  h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?subRows(g,subs,[]):`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
   const loose=topBands(b=>places(b).some(p=>p.g===g.id&&!SG(g,p.s)));
   if(loose.length)h+=`<div class="section"><h2>Sin subgénero</h2>${UI.selMode?selList(loose):`<div class="list">${loose.map(b=>bandRow(b)).join('')}</div>`}</div>`;
   h+=`<div class="btns"><button class="btn primary" data-act="newSub">+ Subgénero</button>${loose.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameGenre">Renombrar</button><button class="btn danger" data-act="delGenre">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'')+(UI.selMode&&loose.length?selBar(true):'');
 }
-function subRows(g,list){return `<div class="list crate">${list.slice().sort(byName).map(x=>`<button class="row" data-go="${J({k:'sub',g:g.id,s:x.id})}"><span class="tabmark"></span><span class="name divider">${esc(x.name)}${x.subs.length?`<span class="sub" style="font-family:var(--body);text-transform:none;letter-spacing:0">${x.subs.length} subgénero${x.subs.length===1?'':'s'}</span>`:''}</span><span class="meta">${countIn(g.id,x.id)}</span></button>`).join('')}</div>`}
+function subRows(g,list,ct){return `<div class="list crate">${list.slice().sort(byName).map(x=>{const f=findAny(x.id),sh=twins(x).length>1,kids=sharedChildren(x).length;return `<button class="row" data-go="${J({k:'sub',g:f?f.g.id:g.id,s:x.id,cg:g.id,ct:ct||[]})}"><span class="tabmark"></span><span class="name divider">${esc(x.name)}${kids||sh?`<span class="sub" style="font-family:var(--body);text-transform:none;letter-spacing:0">${[kids?`${kids} subgénero${kids===1?'':'s'}`:'',sh?'compartido':''].filter(Boolean).join(' · ')}</span>`:''}</span><span class="meta">${countIn(g.id,x.id)}</span></button>`}).join('')}</div>`}
 function selList(list){return `<div class="list">${list.map(b=>`<label class="row chk" style="cursor:pointer"><input type="checkbox" data-sel="${b.id}" ${UI.sel.has(b.id)?'checked':''}>${thumb(b.img)}<span class="name">${esc(b.name)}<span class="sub">${esc((b.spGenres||[]).slice(0,4).join(' · ')||'—')}</span></span></label>`).join('')}</div>`}
 function selBar(all){return `<div class="bar"><span class="meta" style="font-family:var(--mono);font-size:12px">${UI.sel.size} marcadas</span>${placeSelect('f_move','','',all?'Elegir rama…':'Mover a…')}<button class="btn primary small" data-act="moveSel" ${UI.sel.size?'':'disabled'}>Mover</button>${all?`<button class="btn small" data-act="addSel" ${UI.sel.size?'':'disabled'}>Añadir también</button><button class="btn small" data-act="selMode">Listo</button>`:`<button class="btn small" data-act="selAll">Todas</button>`}</div>`}
 function vSub(){
   const g=G(UI.view.g),s=SG(g,UI.view.s);if(!s)return fallback();
-  const path=subPath(g,s.id);
-  let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:g.name,v:{k:'genre',g:g.id}},...path.slice(0,-1).map(x=>({t:x.name,v:{k:'sub',g:g.id,s:x.id}})),{t:s.name}])+`<h1>${esc(s.name)}</h1>`;
-  if(s.subs.length)h+=`<div class="section"><h2>Subgéneros</h2>${subRows(g,s.subs)}</div>`;
-  const list=topBands(b=>inPlace(b,g.id,s.id));
-  h+=`<div class="section">${s.subs.length?`<h2>Bandas en ${esc(s.name)}</h2>`:''}`+(list.length?(UI.selMode?selList(list):`<div class="list">${list.map(b=>bandRow(b)).join('')}</div>`):(s.subs.length?'':`<div class="empty">Ninguna banda aquí todavía. Muévelas desde “Sin clasificar” o crea subgéneros dentro.</div>`))+`</div>`;
+  const cg=G(UI.view.cg)||g,ct=(UI.view.ct||[]).map(id=>findAny(id)).filter(Boolean);
+  const trail=UI.view.cg&&G(UI.view.cg)?ct:subPath(g,s.id).slice(0,-1).map(x=>findAny(x.id));
+  let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:cg.name,v:{k:'genre',g:cg.id}},...trail.map((f,i)=>({t:f.s.name,v:{k:'sub',g:f.g.id,s:f.s.id,cg:cg.id,ct:trail.slice(0,i).map(z=>z.s.id)}})),{t:s.name}])+`<h1>${esc(s.name)}</h1>`;
+  const tw=twins(s).filter(t=>t.s!==s);
+  if(tw.length)h+=`<div class="btns"><span class="hint">Compartido con:</span>${tw.map(t=>`<button class="btn small" data-go="${J({k:'sub',g:t.g.id,s:t.s.id})}">${esc([t.g.name,...t.path.map(z=>z.name),t.s.name].join(' / '))}</button>`).join('')}</div>`;
+  const kids=sharedChildren(s);
+  if(kids.length)h+=`<div class="section"><h2>Subgéneros</h2>${subRows(cg,kids,trail.map(z=>z.s.id).concat(s.id))}</div>`;
+  const same=new Set(twins(s).map(t=>t.s.id).concat(s.id));
+  const list=topBands(b=>places(b).some(p=>same.has(p.s)));
+  h+=`<div class="section">${kids.length?`<h2>Bandas en ${esc(s.name)}</h2>`:''}`+(list.length?(UI.selMode?selList(list):`<div class="list">${list.map(b=>bandRow(b)).join('')}</div>`):(kids.length?'':`<div class="empty">Ninguna banda aquí todavía. Muévelas desde “Sin clasificar” o crea subgéneros dentro.</div>`))+`</div>`;
   h+=`<div class="btns"><button class="btn primary" data-act="newSub">+ Subgénero</button>${list.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameSub">Renombrar</button><button class="btn danger" data-act="delSub">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'')+(UI.selMode&&list.length?selBar(true):'');
 }
@@ -482,13 +495,14 @@ app.addEventListener('click',async e=>{
     case'addAlso':{const b=D.bands[v.id],[gg,ss]=(document.getElementById('f_also').value||'|').split('|');if(!gg)return;if(!addAlso(b,gg,ss))say('Ya está en esa rama.',true);touch();render();break}
     case'selMode':UI.selMode=!UI.selMode;UI.sel.clear();render();break;
     case'addSel':{const [gg,ss]=(document.getElementById('f_move').value||'|').split('|');if(!gg){say('Elige un destino en la lista.',true);return}let n=0;for(const id of UI.sel){const b=D.bands[id];if(b&&addAlso(b,gg,ss))n++}UI.sel.clear();touch();UI.selMode=false;say(`${n} añadida${n===1?'':'s'} también a esa rama.`);break}
-    case'moveSel':{const [gg,ss]=(document.getElementById('f_move').value||'|').split('|');if(!gg){say('Elige un destino en la lista.',true);return}let n=0;const mh=x=>v.k==='sub'?(x.g===v.g&&(x.s||null)===v.s):v.k==='genre'?(x.g===v.g&&!SG(G(v.g),x.s)):true;for(const id of UI.sel){const b=D.bands[id];if(!b)continue;n++;const nw={g:gg,s:ss||null};if(mh({g:b.genreId,s:b.subId})||!G(b.genreId)){b.genreId=nw.g;b.subId=nw.s}else{const ai=(b.also||[]).findIndex(mh);if(ai>=0)b.also[ai]=nw;else{b.genreId=nw.g;b.subId=nw.s}}b.also=(b.also||[]).filter((x,i,arr)=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null))&&arr.findIndex(y=>y.g===x.g&&(y.s||null)===(x.s||null))===i)}UI.selMode=false;UI.sel.clear();touch();say(`${n} movida${n===1?'':'s'}.`);break}
+    case'moveSel':{const [gg,ss]=(document.getElementById('f_move').value||'|').split('|');if(!gg){say('Elige un destino en la lista.',true);return}let n=0;const shv=v.k==='sub'?new Set(twins(SG(G(v.g),v.s)).map(t=>t.s.id).concat(v.s)):null;const mh=x=>v.k==='sub'?shv.has(x.s):v.k==='genre'?(x.g===v.g&&!SG(G(v.g),x.s)):true;for(const id of UI.sel){const b=D.bands[id];if(!b)continue;n++;const nw={g:gg,s:ss||null};if(mh({g:b.genreId,s:b.subId})||!G(b.genreId)){b.genreId=nw.g;b.subId=nw.s}else{const ai=(b.also||[]).findIndex(mh);if(ai>=0)b.also[ai]=nw;else{b.genreId=nw.g;b.subId=nw.s}}b.also=(b.also||[]).filter((x,i,arr)=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null))&&arr.findIndex(y=>y.g===x.g&&(y.s||null)===(x.s||null))===i)}UI.selMode=false;UI.sel.clear();touch();say(`${n} movida${n===1?'':'s'}.`);break}
     case'autoClass':{const m=autoMatches();for(const x of m){x.b.genreId=x.g;x.b.subId=x.s}touch();say(`${m.length} clasificada${m.length===1?'':'s'} por sus géneros de Spotify.`);break}
     case'delGenre':{const n=countIn(v.g);UI.form=null;UI.confirm={w:'genre',msg:n?`Tiene ${n} banda(s); pasarán a “Sin clasificar”. ¿Borrar el género y sus subgéneros?`:'¿Borrar este género y sus subgéneros?'};render();break}
-    case'delSub':{const n=countIn(v.g,v.s),fs=findSub(G(v.g),v.s),up=fs.path.length?fs.path[fs.path.length-1].name:G(v.g).name;UI.form=null;UI.confirm={w:'sub',msg:(n?`Hay ${n} banda(s) aquí o en sus subgéneros; pasarán a “${up}”. `:'')+'¿Borrar este subgénero'+(fs.s.subs.length?' y los que tiene dentro':'')+'?'};render();break}
+    case'delSub':{if(twins(SG(G(v.g),v.s)).length>1){UI.form=null;UI.confirm={w:'sub',msg:'¿Quitar este subgénero de aquí? Es compartido: sus bandas y lo que tiene dentro siguen en la otra rama.'};render();break}const n=countIn(v.g,v.s),fs=findSub(G(v.g),v.s),up=fs.path.length?fs.path[fs.path.length-1].name:G(v.g).name;UI.form=null;UI.confirm={w:'sub',msg:(n?`Hay ${n} banda(s) aquí o en sus subgéneros; pasarán a “${up}”. `:'')+'¿Borrar este subgénero'+(fs.s.subs.length?' y los que tiene dentro':'')+'?'};render();break}
     case'askDelBand':{const b=D.bands[v.id],n=children(b.id).length;UI.form=null;UI.confirm={w:'band',msg:`¿Quitar “${b.name}” de tu colección?`+(n?` Sus ${n} relacionado(s) pasarán a “Sin clasificar”.`:'')+' En Spotify no cambia nada.'};render();break}
     case'confirmYes':{const w=UI.confirm.w;UI.confirm=null;
       if(w==='genre'){for(const b of bands()){if(b.genreId===v.g){b.genreId=null;b.subId=null}b.also=(b.also||[]).filter(x=>x.g!==v.g);fixPrimary(b)}D.tree.genres=D.tree.genres.filter(g=>g.id!==v.g);touch();go({k:'home'})}
+      else if(w==='sub'&&twins(SG(G(v.g),v.s)).length>1){const g=G(v.g),fs=findSub(g,v.s),tw=twins(fs.s).find(t=>t.s!==fs.s),parent=fs.path.length?fs.path[fs.path.length-1]:null;for(const b of bands()){if(b.subId===v.s){b.genreId=tw.g.id;b.subId=tw.s.id}for(const x of b.also||[])if(x.s===v.s){x.g=tw.g.id;x.s=tw.s.id}b.also=(b.also||[]).filter((x,i,arr)=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null))&&arr.findIndex(y=>y.g===x.g&&(y.s||null)===(x.s||null))===i)}const moved=[];walk(fs.s.subs,x=>moved.push(x.id));for(const b of bands()){if(moved.includes(b.subId))b.genreId=tw.g.id;for(const x of b.also||[])if(moved.includes(x.s))x.g=tw.g.id}tw.s.subs=tw.s.subs.concat(fs.s.subs);const host=parent||g;host.subs=host.subs.filter(x=>x.id!==v.s);touch();go(parent?{k:'sub',g:g.id,s:parent.id}:{k:'genre',g:g.id})}
       else if(w==='sub'){const g=G(v.g),fs=findSub(g,v.s),parent=fs.path.length?fs.path[fs.path.length-1]:null,ids=new Set(descIds(fs.s));for(const b of bands()){if(b.genreId===v.g&&ids.has(b.subId))b.subId=parent?parent.id:null;for(const x of b.also||[])if(x.g===v.g&&ids.has(x.s))x.s=parent?parent.id:null;b.also=(b.also||[]).filter((x,i,arr)=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null))&&arr.findIndex(y=>y.g===x.g&&(y.s||null)===(x.s||null))===i)}const host=parent||g;host.subs=host.subs.filter(x=>x.id!==v.s);touch();go(parent?{k:'sub',g:g.id,s:parent.id}:{k:'genre',g:g.id})}
       else if(w==='band'){const b=D.bands[v.id];const pl=placeOf(b);for(const c of children(b.id)){c.parentId=null;c.genreId=null;c.subId=null}delete D.bands[b.id];touch();go(b.parentId&&D.bands[b.parentId]?{k:'band',id:b.parentId}:pl.s?{k:'sub',g:pl.g.id,s:pl.s.id}:pl.g?{k:'genre',g:pl.g.id}:{k:'home'})}
       break}
