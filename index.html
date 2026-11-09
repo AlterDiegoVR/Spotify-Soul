@@ -226,11 +226,17 @@ async function access(){
   if(Date.now()>tok.exp){try{await tokenReq({grant_type:'refresh_token',refresh_token:tok.refresh})}catch(e){tok=null;LS.del('md_tok');render();throw new Error('nologin')}}
   return tok.access;
 }
+let spBlocked=LS.get('md_block',0),spQueue=Promise.resolve();
+const spWait=()=>{const p=spQueue.then(()=>sleep(350));spQueue=p.catch(()=>{});return p};
+function waitText(){const m=Math.ceil((spBlocked-Date.now())/60000);return m<=1?'en un minuto':m<90?`en unos ${m} minutos`:`en unas ${Math.round(m/60)} horas`}
+function spErr(e){const m=e&&e.message;if(m==='nologin')return'La sesión de Spotify ha caducado. Vuelve a conectar.';if(m==='ratelimit')return`Spotify ha pedido una pausa por exceso de peticiones. Vuelve a intentarlo ${waitText()}. Lo que ya está cargado sigue disponible.`;return m||'Error de Spotify'}
 async function sp(path,tries=0){
+  if(Date.now()<spBlocked)throw new Error('ratelimit');
+  await spWait();
   const url=path.startsWith('http')?path:'https://api.spotify.com/v1'+path;
   const r=await fetch(url,{headers:{Authorization:'Bearer '+await access()}});
   if(r.status===401&&tries<1){tok.exp=0;return sp(path,tries+1)}
-  if(r.status===429&&tries<4){const s=+(r.headers.get('Retry-After')||3);await sleep(Math.min(s,30)*1000+300);return sp(path,tries+1)}
+  if(r.status===429){const s=+(r.headers.get('Retry-After')||5);if(s<=8&&tries<2){await sleep(s*1000+500);return sp(path,tries+1)}spBlocked=Date.now()+Math.max(s,30)*1000;LS.set('md_block',spBlocked);throw new Error('ratelimit')}
   if(!r.ok){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('Spotify '+r.status+(m?': '+m:''))}
   return r.json();
 }
@@ -314,15 +320,14 @@ async function fetchDisco(b,force){
 async function loadSim(b){
   const sid=b.sid;UI.sim[sid]='loading';
   try{const r=await sp('/search?type=artist&limit=10&q='+encodeURIComponent(b.name));UI.sim[sid]=(r.artists.items||[]).filter(a=>a&&a.id!==sid)}
-  catch(e){UI.sim[sid]='error'}
+  catch(e){UI.sim[sid]=null;say(spErr(e),true)}
   if(UI.view.k==='band'&&D.bands[UI.view.id]&&D.bands[UI.view.id].sid===sid)render();
 }
 function go(v){
   if(v.k==='band'&&!v.from&&(UI.view.k==='sub'||UI.view.k==='genre'))v={...v,from:{g:UI.view.g,s:UI.view.s||null}};
   UI.view=v;UI.claudeOut=null;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
   if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];b.lastOpened=Date.now();touch();
-    if(b.sid&&tok&&!UI.sim[b.sid])loadSim(b);
-    if(b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>30*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;say(e.message==='nologin'?'Conecta Spotify para cargar la discografía.':e.message,true)})}}
+    if(b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>30*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;say(spErr(e),true)})}}
   render();window.scrollTo(0,0);
 }
 function rediscover(){const all=bands();if(!all.length)return null;const s=all.slice().sort((a,b)=>(a.lastOpened||0)-(b.lastOpened||0));const pool=s.slice(0,Math.max(1,Math.ceil(s.length/4)));return pool[Math.floor(Math.random()*pool.length)]}
@@ -461,7 +466,8 @@ function vBand(){
   const sim=b.sid?UI.sim[b.sid]:null;
   if(b.sid&&tok){
     h+=`<div class="section"><h2>Parecidos en Spotify</h2>`;
-    if(sim==='loading'||!sim)h+=`<div class="empty">Buscando…</div>`;
+    if(!sim)h+=`<div class="btns"><button class="btn small" data-act="loadSim">Buscar parecidos</button></div>`;
+    else if(sim==='loading')h+=`<div class="empty">Buscando…</div>`;
     else if(sim==='error')h+=`<div class="empty">No se pudieron cargar.</div>`;
     else if(!sim.length)h+=`<div class="empty">Spotify no sugiere nada para esta banda.</div>`;
     else{
@@ -561,7 +567,7 @@ async function submitForm(id){
 async function runImport(label,fn){
   UI.busy=label;render();let added=0;
   try{added=await fn(n=>{UI.busy=label+' '+n;renderBusy()});touch();if(added!==null)say(`${added} banda${added===1?'':'s'} nueva${added===1?'':'s'} en “Sin clasificar”.`)}
-  catch(e){say(e.message==='nologin'?'La sesión de Spotify caducó. Vuelve a conectar.':e.message,true)}
+  catch(e){say(spErr(e),true)}
   UI.busy=null;render();
 }
 function renderBusy(){document.querySelectorAll('.notice').forEach(n=>{if(UI.busy&&n.textContent!==UI.busy&&/…/.test(n.textContent))n.textContent=UI.busy})}
@@ -602,7 +608,8 @@ app.addEventListener('click',async e=>{
       touch();
       if(pg){UI.form=null;render();fetchDisco(b).then(render).catch(()=>{})}else go({k:'band',id:b.id});
       break}
-    case'refetch':{const b=D.bands[v.id];UI.busy='Actualizando discografía…';render();try{await fetchDisco(b,true)}catch(err){say(err.message,true)}UI.busy=null;render();break}
+    case'loadSim':loadSim(D.bands[v.id]);render();break;
+    case'refetch':{const b=D.bands[v.id];UI.busy='Actualizando discografía…';render();try{await fetchDisco(b,true)}catch(err){say(spErr(err),true)}UI.busy=null;render();break}
     case'pick':{const b=D.bands[v.id],id=a.dataset.a,set=new Set(b.picked||[]);if(!set.size||UI.fullDisco)UI.fullDisco=true;set.has(id)?set.delete(id):set.add(id);b.picked=[...set];touch();render();break}
     case'rate':{const b=D.bands[v.id],id=a.dataset.a,n=+a.dataset.n;b.ratings=b.ratings||{};if(b.ratings[id]===n)delete b.ratings[id];else b.ratings[id]=n;touch();render();break}
     case'editYear':{UI.form={t:'year',a:a.dataset.a};render();setTimeout(()=>{const el=document.getElementById('f_y');if(el){el.focus();el.select()}},0);break}
@@ -637,8 +644,8 @@ app.addEventListener('click',async e=>{
       runImport('Leyendo listas…',async prog=>{let added=0,i=0;for(const p of chosen){i++;prog(`(${i}/${chosen.length}) ${p.name}`);const items=await spAll(`/playlists/${p.id}/items?limit=50`);for(const it of items){const t=it&&(it.item||it.track);const ar=t&&t.artists&&t.artists[0];if(ar&&ar.id&&addArtist(ar).isNew)added++}}return added});break}
     case'fetchAll':{const list=bands().filter(b=>b.sid&&!b.fetchedAt);if(!list.length){say('Todas las discografías están cargadas.');return}
       UI.busy=`Cargando discografías… 0/${list.length}`;render();let i=0;
-      for(const b of list){try{await fetchDisco(b)}catch(err){if(err.message==='nologin'){say('La sesión de Spotify caducó.',true);break}}i++;UI.busy=`Cargando discografías… ${i}/${list.length}`;renderBusy();await sleep(250)}
-      UI.busy=null;touch();render();say('Discografías cargadas.');break}
+      let stop=null;for(const b of list){try{await fetchDisco(b)}catch(err){if(err.message==='nologin'||err.message==='ratelimit'){stop=err;break}}i++;UI.busy=`Cargando discografías… ${i}/${list.length}`;renderBusy();await sleep(400)}
+      UI.busy=null;touch();if(stop)say(spErr(stop)+` Se han cargado ${i} de ${list.length}; cuando pase, pulsa otra vez y seguirá donde lo dejó.`,true);else say('Discografías cargadas.');break}
   }
 });
 app.addEventListener('change',e=>{
