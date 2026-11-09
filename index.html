@@ -163,6 +163,21 @@ async function applyCode(code){
   catch(e){say('No se pudo cargar la colección: '+e.message,true)}
   render();
 }
+function exportForClaude(){
+  const nodes=[];for(const g of D.tree.genres.slice().sort(byName)){nodes.push({id:g.id,ruta:g.name});const rec=(list,pre)=>{for(const x of list.slice().sort(byName)){const r=pre+' / '+x.name;nodes.push({id:x.id,ruta:r});rec(x.subs,r)}};rec(g.subs,g.name)}
+  const bs=unclassified().map(b=>{const o={id:b.id,nombre:b.name};if((b.spGenres||[]).length)o.spotify=b.spGenres.slice(0,5);return o});
+  return JSON.stringify({mi_discoteca:'clasificar',generos:nodes,bandas:bs});
+}
+function applyClaude(text){
+  let o;const m=String(text).match(/\{[\s\S]*\}/);try{o=JSON.parse(m?m[0]:text)}catch(_){say('No reconozco ese texto. Pega la respuesta de Claude entera, empezando por la llave {.',true);return}
+  const list=Array.isArray(o.asignar)?o.asignar:Array.isArray(o.assign)?o.assign:[];
+  let ok=0,bad=0;
+  for(const it of list){const b=D.bands[it.id];const to=(it.a||it.to||[]).map(id=>G(id)?{g:id,s:null}:(f=>f?{g:f.g.id,s:id}:null)(findAny(id))).filter(Boolean);
+    if(!b||!to.length){bad++;continue}
+    b.parentId=null;b.genreId=to[0].g;b.subId=to[0].s;b.also=to.slice(1);fixPrimary(b);ok++}
+  if(!ok){say('No se ha aplicado nada. Comprueba que has pegado la respuesta correcta.',true);return}
+  touch();UI.view={k:'home'};say(`Clasificadas ${ok} banda${ok===1?'':'s'}.`+(bad?` ${bad} no se pudieron aplicar.`:''));
+}
 async function pullRemote(){
   if(!cfg.ghToken||!cfg.gistId)return false;
   try{
@@ -282,7 +297,7 @@ async function fetchDisco(b,force){
 /* ================= navegación ================= */
 function go(v){
   if(v.k==='band'&&!v.from&&(UI.view.k==='sub'||UI.view.k==='genre'))v={...v,from:{g:UI.view.g,s:UI.view.s||null}};
-  UI.view=v;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
+  UI.view=v;UI.claudeOut=null;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
   if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];b.lastOpened=Date.now();touch();
     if(b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>30*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;say(e.message==='nologin'?'Conecta Spotify para cargar la discografía.':e.message,true)})}}
   render();window.scrollTo(0,0);
@@ -361,6 +376,7 @@ function vUnclassified(){
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Sin clasificar'}])+`<h1>Sin clasificar</h1>`;
   if(!list.length)return h+`<div class="empty">Todo clasificado.</div>`;
   if(!D.tree.genres.length)h+=`<div class="notice">Primero crea géneros y subgéneros en Inicio. Luego vuelve aquí para repartir las bandas.</div>`;
+  h+=`<div class="panel"><div class="divider" style="font-size:20px">Clasificar con Claude</div><span class="hint">1. Copia tus géneros y estas ${list.length} bandas y pégaselo a Claude. 2. Pega aquí lo que te devuelva y pulsa Aplicar.</span><div class="btns"><button class="btn primary small" data-act="copyForClaude">Copiar para Claude</button></div>${UI.claudeOut?`<textarea class="code" id="claudeout" readonly>${esc(UI.claudeOut)}</textarea>`:''}<form id="f_claude" class="panel" style="padding:0;border:0"><textarea class="code" id="f_claudein" placeholder="Pega aquí la respuesta de Claude"></textarea><div class="btns"><button class="btn small" type="submit">Aplicar clasificación</button></div></form></div>`;
   const auto=autoMatches();
   if(auto.length)h+=`<div class="panel"><span><b>${auto.length}</b> banda${auto.length===1?'':'s'} tienen en Spotify un género que coincide con uno de tus subgéneros.</span><div class="btns"><button class="btn primary small" data-act="autoClass">Clasificarlas</button></div></div>`;
   h+=`<span class="hint">Marca varias y muévelas de golpe con la barra de abajo. Debajo de cada nombre ves los géneros que les pone Spotify.</span>`;
@@ -490,6 +506,7 @@ async function submitForm(id){
   if(id==='f_setup'||id==='f_cidform'){cfg.clientId=val('f_cid');LS.set('md_cfg',cfg);if(id==='f_setup'&&cfg.clientId)login();else{say('Client ID guardado.');}return}
   if(id==='f_sync'){cfg.ghToken=val('f_gh');cfg.gistId='';LS.set('md_cfg',cfg);if(!cfg.ghToken)return;await pushRemote();if(cfg.gistId){UI.showCode=true;say('Sincronización activada. Ahora copia el código y pégalo en el otro dispositivo.')}else{cfg.ghToken='';LS.set('md_cfg',cfg);say('No se pudo crear el Gist. Revisa que el token tenga permiso de Gists (lectura y escritura).',true)}render();return}
   if(id==='f_code'){await applyCode(val('f_codein'));return}
+  if(id==='f_claude'){applyClaude(val('f_claudein'));return}
   const f=UI.form,v=UI.view;
   if(f.t==='genre'){const n=val('f_name');if(!n)return;D.tree.genres.push({id:rid(),name:n,subs:[]});touch()}
   else if(f.t==='sub'){const n=val('f_name');if(!n)return;const host=v.k==='sub'?SG(G(v.g),v.s):G(v.g);host.subs.push({id:rid(),name:n,subs:[]});touch()}
@@ -552,6 +569,7 @@ app.addEventListener('click',async e=>{
     case'addAlso':{const b=D.bands[v.id],[gg,ss]=(document.getElementById('f_also').value||'|').split('|');if(!gg)return;if(!addAlso(b,gg,ss))say('Ya está en esa rama.',true);touch();render();break}
     case'selMode':UI.selMode=!UI.selMode;UI.sel.clear();render();break;
     case'addSel':{const [gg,ss]=(document.getElementById('f_move').value||'|').split('|');if(!gg){say('Elige un destino en la lista.',true);return}let n=0;for(const id of UI.sel){const b=D.bands[id];if(b&&addAlso(b,gg,ss))n++}UI.sel.clear();touch();UI.selMode=false;say(`${n} añadida${n===1?'':'s'} también a esa rama.`);break}
+    case'copyForClaude':{UI.claudeOut=exportForClaude();let ok=false;try{await navigator.clipboard.writeText(UI.claudeOut);ok=true}catch(_){}say(ok?'Copiado. Pégaselo a Claude en el chat.':'Selecciona todo el texto del recuadro y cópialo.');if(!ok)setTimeout(()=>{const t=document.getElementById('claudeout');t&&t.select()},0);break}
     case'showCode':UI.showCode=true;render();break;
     case'copyCode':{const t=document.getElementById('codebox');try{await navigator.clipboard.writeText(t.value);say('Código copiado. Pásatelo al móvil y pégalo allí en Ajustes.')}catch(_){t.select();say('Selecciona el código y cópialo.')}break}
     case'syncNow':{const ch=await pullRemote();if(!ch)await pushRemote();render();break}
