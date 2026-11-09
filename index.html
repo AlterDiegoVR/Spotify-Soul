@@ -119,7 +119,7 @@ const app=document.getElementById('app');
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
-const byName=(a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'});
+const byName=(a,b)=>String(a&&a.name||'').localeCompare(String(b&&b.name||''),'es',{sensitivity:'base'});
 const rid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 const J=v=>esc(JSON.stringify(v));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -250,7 +250,18 @@ const twins=x=>allSubs().filter(o=>norm(o.s.name)===norm(x.name));
 function shareIds(x){const ids=new Set(),st=[x];while(st.length){const n=st.pop();for(const t of twins(n)){if(ids.has(t.s.id))continue;ids.add(t.s.id);for(const c of t.s.subs)st.push(c)}}ids.add(x.id);return ids}
 function sharedChildren(x){const seen=new Map();for(const t of twins(x).sort((a,b)=>(a.s===x?-1:b.s===x?1:0)))for(const c of t.s.subs)if(!seen.has(norm(c.name)))seen.set(norm(c.name),c);for(const c of x.subs)if(!seen.has(norm(c.name)))seen.set(norm(c.name),c);return[...seen.values()]}
 function descIds(x){const ids=[x.id];walk(x.subs,y=>ids.push(y.id));return ids}
-function fixTree(){if(!D.tree||!Array.isArray(D.tree.genres))D.tree={genres:[]};for(const g of D.tree.genres){if(!Array.isArray(g.subs))g.subs=[];walk(g.subs,x=>{if(!Array.isArray(x.subs))x.subs=[]})}}
+function fixData(){
+  if(!D||typeof D!=='object')D={v:1,updated:0,tree:{genres:[]},bands:{}};
+  if(!D.bands||typeof D.bands!=='object')D.bands={};
+  for(const k of Object.keys(D.bands)){const b=D.bands[k];
+    if(!b||typeof b!=='object'){delete D.bands[k];continue}
+    b.id=k;b.name=String(b.name||'(sin nombre)');
+    for(const f of ['albums','hidden','also','picked','spGenres'])if(!Array.isArray(b[f]))b[f]=[];
+    b.albums=b.albums.filter(a=>a&&a.id).map(a=>({...a,t:String(a.t||'(sin título)'),y:String(a.y||'')}));
+    if(b.parentId&&(!D.bands[b.parentId]||b.parentId===k))b.parentId=null;}
+  const seen=new Set();for(const b of Object.values(D.bands)){let x=b,n=0;seen.clear();while(x&&x.parentId){if(seen.has(x.id)||n++>20){x.parentId=null;break}seen.add(x.id);x=D.bands[x.parentId]}}
+}
+function fixTree(){fixData();if(!D.tree||!Array.isArray(D.tree.genres))D.tree={genres:[]};for(const g of D.tree.genres){if(!Array.isArray(g.subs))g.subs=[];walk(g.subs,x=>{if(!Array.isArray(x.subs))x.subs=[]})}}
 function places(b){const r=rootOf(b),out=[];if(G(r.genreId))out.push({g:r.genreId,s:r.subId||null});for(const x of r.also||[])if(G(x.g)&&!out.some(o=>o.g===x.g&&o.s===(x.s||null)))out.push({g:x.g,s:x.s||null});return out}
 const inPlace=(b,gid,sid)=>places(b).some(p=>p.g===gid&&p.s===(sid||null));
 const pName=p=>{const g=G(p.g);return g?[g.name,...subPath(g,p.s).map(x=>x.name)].join(' / '):''};
@@ -269,7 +280,8 @@ function countIn(gid,sid){
 const unclassified=()=>topBands(b=>!places(b).length);
 const bandBySid=sid=>bands().find(b=>b.sid===sid);
 const imgOf=imgs=>{if(!imgs||!imgs.length)return'';const s=imgs.slice().sort((a,b)=>(a.width||0)-(b.width||0));return(s.find(i=>(i.width||0)>=160)||s[s.length-1]).url};
-function addArtist(a,extra={}){ // a = objeto artista de Spotify (completo o simplificado)
+function addArtist(a,extra={}){
+  if(!a||!a.id||!a.name)return{b:null,isNew:false}; // a = objeto artista de Spotify (completo o simplificado)
   let b=bandBySid(a.id);
   if(b){if(a.genres&&a.genres.length&&!(b.spGenres||[]).length)b.spGenres=a.genres;if(a.images&&a.images.length&&!b.img)b.img=imgOf(a.images);return{b,isNew:false}}
   b={id:rid(),sid:a.id,name:a.name,genreId:null,subId:null,parentId:null,note:'',spGenres:a.genres||[],img:imgOf(a.images),albums:[],hidden:[],fetchedAt:0,lastOpened:0,created:Date.now(),...extra};
@@ -575,14 +587,14 @@ app.addEventListener('click',async e=>{
     case'plAll':{const all=UI.playlists.every(p=>p.on);UI.playlists.forEach(p=>p.on=!all);render();break}
     case'simAdd':case'simRel':{
       const cur=D.bands[v.id],ar=(UI.sim[cur.sid]||[]).find(x=>x.id===a.dataset.sid);if(!ar)return;
-      const {b,isNew}=addArtist(ar);
+      const {b,isNew}=addArtist(ar);if(!b)return;
       if(act==='simRel'){b.parentId=cur.id;b.genreId=null;b.subId=null;b.also=[];say(`${b.name} colgada de ${cur.name} como relacionada.`)}
       else{const ps=places(cur),cx=v.from&&ps.find(p=>p.g===v.from.g&&p.s===(v.from.s||null)),pl=cx||ps[0];if(pl)addAlso(b,pl.g,pl.s);say(`${b.name} añadida a tu colección`+(pl?` en ${pName(pl)}.`:' (sin clasificar).'))}
       touch();if(isNew)fetchDisco(b).catch(()=>{});render();break}
     case'pickArtist':{
       const ar=(UI.spResults||[]).find(x=>x.id===a.dataset.sid);if(!ar)return;
       const pg=UI.form.parentId,note=(document.getElementById('f_note')?.value||'').trim();
-      const {b,isNew}=addArtist(ar);
+      const {b,isNew}=addArtist(ar);if(!b)return;
       if(pg&&pg!==b.id){b.parentId=pg;b.genreId=null;b.subId=null;if(note)b.note=note}
       else if(v.k==='sub'||v.k==='genre'){addAlso(b,v.g,v.k==='sub'?v.s:null);touch();say(`${b.name} añadida a ${v.k==='sub'?SG(G(v.g),v.s).name:G(v.g).name}.`);if(isNew)fetchDisco(b).catch(()=>{});setTimeout(()=>{const el=document.getElementById('f_sq');el&&el.focus()},0);break}
       touch();
@@ -637,7 +649,8 @@ app.addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;const
 
 /* ================= render ================= */
 function renderSync(){const s=document.getElementById('syncst');if(s)s.textContent=UI.syncState}
-function render(){
+function render(){try{renderInner()}catch(e){showFatal(e)}}
+function renderInner(){
   const keep={};document.querySelectorAll('#frm input,#frm select').forEach(el=>{if(el.id)keep[el.id]=el.value});
   const v=UI.view.k;
   const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
@@ -650,7 +663,10 @@ function render(){
 }
 
 /* ================= arranque ================= */
-(async()=>{fixTree();render();await handleCallback();render();await pullRemote();})();
+function showFatal(e){console.error(e);app.innerHTML=`<header class="top"><button class="brand" onclick="location.reload()">Mi <span>Discoteca</span></button></header><div class="notice err"><b>Algo ha fallado al mostrar la colección.</b> Copia este mensaje y pásaselo a Claude:<br><code>${esc((e&&e.message)||e)}</code><br><code>${esc(((e&&e.stack)||'').split('\n').slice(0,3).join(' | '))}</code></div><div class="btns"><button class="btn" onclick="location.reload()">Recargar</button></div>`}
+window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(ev.error||ev.message)});
+window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
+(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{render()}catch(e){showFatal(e)}await pullRemote();})();
 })();
 </script>
 </body>
