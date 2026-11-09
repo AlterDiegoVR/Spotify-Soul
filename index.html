@@ -375,7 +375,7 @@ function vHome(){
   if(p){const pl=placeOf(p);h+=`<div class="pick">${p.img?`<img src="${esc(p.img)}" alt="">`:''}<div class="in"><span class="lbl">Redescubre · ${esc(ago(p.lastOpened))}</span><div class="divider">${esc(p.name)}</div><span class="hint">${esc(placeName(p)||'Sin clasificar')}</span><div class="btns"><button class="btn primary small" data-go="${J({k:'band',id:p.id})}">Abrir</button><button class="btn small" data-act="reroll">Otra</button></div></div></div>`}
   const gs=D.tree.genres.slice().sort(byName),un=unclassified().length;
   h+=`<div class="section"><h2>Géneros</h2>`+(gs.length||un?`<div class="list crate">${gs.map(g=>`<button class="row" data-go="${J({k:'genre',g:g.id})}"><span class="tabmark"></span><span class="name divider">${esc(g.name)}</span><span class="meta">${countIn(g.id)}</span></button>`).join('')}${un?`<button class="row" data-go="${J({k:'unclassified'})}"><span class="tabmark" style="opacity:.3"></span><span class="name divider" style="color:var(--muted)">Sin clasificar</span><span class="meta">${un}</span></button>`:''}</div>`:`<div class="empty">Crea tu primer género, por ejemplo <b>Metal</b>, y dentro sus subgéneros.</div>`)+`</div>`;
-  h+=`<div class="btns"><button class="btn primary" data-act="newGenre">+ Género</button><button class="btn" data-act="addBand">+ Banda</button><button class="btn" data-go="${J({k:'import'})}">Importar de Spotify</button><button class="btn" data-go="${J({k:'favs'})}"><span class="heart">♥</span> Favoritas</button><button class="btn" data-go="${J({k:'forgotten'})}">Olvidadas</button><button class="btn" data-go="${J({k:'unclassified'})}">Clasificar con Claude</button></div>`;
+  h+=`<div class="btns"><button class="btn primary" data-act="newGenre">+ Género</button><button class="btn" data-act="addBand">+ Banda</button><button class="btn" data-go="${J({k:'import'})}">Importar de Spotify</button><button class="btn" data-go="${J({k:'favs'})}"><span class="heart">♥</span> Favoritas</button><button class="btn" data-go="${J({k:'rated'})}"><span style="color:var(--star)">★</span> Discos valorados</button><button class="btn" data-go="${J({k:'forgotten'})}">Olvidadas</button><button class="btn" data-go="${J({k:'unclassified'})}">Clasificar con Claude</button></div>`;
   if(UI.form)h+=formHtml();
   return h;
 }
@@ -384,7 +384,7 @@ function vGenre(){
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:g.name}])+`<h1>${esc(g.name)}</h1>`;
   const gids=new Set();for(const x of g.subs)shareIds(x).forEach(i=>gids.add(i));
   const favs=topBands(b=>b.fav&&places(b).some(p=>p.g===g.id||gids.has(p.s)));
-  h+=`<div class="btns">${favBtn(favs.length)}</div>`;
+  h+=`<div class="btns">${favBtn(favs.length)}<button class="btn small" data-go="${J({k:'rated',place:g.id+'|'})}"><span style="color:var(--star)">★</span> Discos valorados</button></div>`;
   if(UI.favOnly)return h+`<div class="section"><h2>Favoritas en ${esc(g.name)}</h2>${favList(favs,true)}</div>`;
   const subs=g.subs.slice().sort(byName);
   h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?subRows(g,subs,[]):`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
@@ -404,7 +404,7 @@ function vSub(){
   const tw=twins(s).filter(t=>t.s!==s);
   if(tw.length)h+=`<div class="btns"><span class="hint">Compartido con:</span>${tw.map(t=>`<button class="btn small" data-go="${J({k:'sub',g:t.g.id,s:t.s.id})}">${esc([t.g.name,...t.path.map(z=>z.name),t.s.name].join(' / '))}</button>`).join('')}</div>`;
   const sids=shareIds(s),sfavs=topBands(b=>b.fav&&places(b).some(p=>sids.has(p.s)));
-  h+=`<div class="btns">${favBtn(sfavs.length)}</div>`;
+  h+=`<div class="btns">${favBtn(sfavs.length)}<button class="btn small" data-go="${J({k:'rated',place:g.id+'|'+s.id})}"><span style="color:var(--star)">★</span> Discos valorados</button></div>`;
   if(UI.favOnly)return h+`<div class="section"><h2>Favoritas en ${esc(s.name)}</h2>${favList(sfavs,true)}</div>`;
   const kids=sharedChildren(s);
   if(kids.length)h+=`<div class="section"><h2>Subgéneros</h2>${subRows(cg,kids,trail.map(z=>z.s.id).concat(s.id))}</div>`;
@@ -498,6 +498,20 @@ function vBand(){
     }
     h+=`</div>`;
   }
+  return h;
+}
+function vRated(){
+  const v=UI.view,stars=v.stars||0,[pg,ps]=(v.place||'|').split('|');
+  let match=()=>true;
+  if(pg&&G(pg)){if(ps&&findAny(ps)){const ids=shareIds(findAny(ps).s);match=b=>places(b).some(p=>ids.has(p.s))}else{const gids=new Set();for(const x of G(pg).subs)shareIds(x).forEach(i=>gids.add(i));match=b=>places(b).some(p=>p.g===pg||gids.has(p.s))}}
+  const items=[];for(const b of bands()){const RT=b.ratings||{};if(!Object.keys(RT).length||!match(b))continue;for(const a of b.albums||[]){const r=RT[a.id];if(r&&(!stars||r===stars))items.push({b,a,r,y:(b.years||{})[a.id]||a.y||''})}}
+  items.sort((x,y)=>y.r-x.r||byName(x.b,y.b)||(x.y||'9999').localeCompare(y.y||'9999'));
+  let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Discos valorados'}])+`<h1>Discos valorados</h1>`;
+  h+=`<div class="btns">${[0,5,4,3,2,1].map(n=>`<button class="btn small${stars===n?' primary':''}" data-act="rtStars" data-n="${n}">${n?'★'.repeat(n):'Todas'}</button>`).join('')}</div>`;
+  h+=`<label>Género${placeSelect('f_rtplace',pg,ps,'Todos los géneros')}</label>`;
+  if(!items.length)return h+`<div class="empty">No hay discos con esa valoración${pg?' en esta rama':''}. Valóralos con las estrellas dentro de cada banda.</div>`;
+  for(const n of [5,4,3,2,1]){const grp=items.filter(i=>i.r===n);if(!grp.length)continue;
+    h+=`<div class="section"><h2><span style="color:var(--star)">${'★'.repeat(n)}</span> · ${grp.length}</h2><div class="list">${grp.map(i=>`<div class="row al">${i.a.img?`<img src="${esc(i.a.img)}" alt="" loading="lazy">`:''}<div class="name"><a class="at" href="https://open.spotify.com/album/${esc(i.a.id)}" target="_blank" rel="noopener">${esc(i.a.t)}</a><div class="arow"><button class="yrb" data-go="${J({k:'band',id:i.b.id})}" style="font-family:var(--body);color:var(--fg)">${esc(i.b.name)}</button><span class="meta" style="font-family:var(--mono);font-size:12px;color:var(--muted)">${esc(i.y||'—')}</span><span class="meta" style="font-size:12px;color:var(--muted)">${esc(placeName(i.b))}</span></div></div></div>`).join('')}</div></div>`}
   return h;
 }
 function vFavs(){const l=topBands(b=>b.fav);return crumbs([{t:'Inicio',v:{k:'home'}},{t:'Favoritas'}])+`<h1>Favoritas</h1>`+favList(l,true)}
@@ -630,6 +644,7 @@ app.addEventListener('click',async e=>{
       touch();
       if(pg){UI.form=null;render();fetchDisco(b).then(render).catch(()=>{})}else go({k:'band',id:b.id});
       break}
+    case'rtStars':UI.view={...v,stars:+a.dataset.n};render();break;
     case'favBand':{const b=D.bands[v.id];b.fav=!b.fav;touch();render();break}
     case'favOnly':UI.favOnly=!UI.favOnly;render();break;
     case'loadSim':loadSim(D.bands[v.id]);render();break;
@@ -675,6 +690,7 @@ app.addEventListener('click',async e=>{
 app.addEventListener('change',e=>{
   if(e.target.dataset.sel){e.target.checked?UI.sel.add(e.target.dataset.sel):UI.sel.delete(e.target.dataset.sel);const m=document.querySelector('.bar .meta');if(m)m.textContent=UI.sel.size+' marcadas';document.querySelectorAll('[data-act="moveSel"],[data-act="addSel"]').forEach(btn=>btn.disabled=!UI.sel.size)}
   if(e.target.dataset.pl){const p=UI.playlists.find(x=>x.id===e.target.dataset.pl);if(p)p.on=e.target.checked}
+  if(e.target.id==='f_rtplace'){UI.view={...UI.view,place:e.target.value};render();return}
   if(e.target.id==='f_parent'){const l=document.getElementById('placeLbl');if(l)l.hidden=!!e.target.value}
 });
 app.addEventListener('submit',e=>{e.preventDefault();submitForm(e.target.id)});
@@ -689,7 +705,7 @@ function render(){try{renderInner();paintBg()}catch(e){showFatal(e)}}
 function renderInner(){
   const keep={};document.querySelectorAll('#frm input,#frm select').forEach(el=>{if(el.id)keep[el.id]=el.value});
   const v=UI.view.k;
-  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
+  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='rated'?vRated():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
   let notes='';
   if(cfg.clientId&&!tok&&v!=='settings')notes+=`<div class="notice">Spotify no está conectado. <button class="btn small spot" data-act="login">Conectar</button></div>`;
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
