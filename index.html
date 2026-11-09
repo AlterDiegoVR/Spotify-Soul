@@ -144,11 +144,12 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function say(text,err){UI.msg={text,err};render();clearTimeout(say.t);say.t=setTimeout(()=>{UI.msg=null;render()},6000)}
 
 /* ================= guardado + sincronización (Gist) ================= */
-let saveTimer=null,pushing=false,pendingPush=false,retryTimer=null,retryN=0;
+let saveTimer=null,pushing=false,pendingPush=false,retryTimer=null,retryN=0,ghUntil=0,lastPull=0;
 function touch(){D.updated=Date.now();LS.set('md_data',D);if(cfg.ghToken){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveTimer=null;pushRemote()},5000)}}
 async function gh(path,opts={}){
+  if(Date.now()<ghUntil){const e=new Error('GitHub 403: límite de la API, esperando');e.status=403;e.wait=ghUntil-Date.now();throw e}
   const r=await fetch('https://api.github.com'+path,{...opts,headers:{'Authorization':'Bearer '+cfg.ghToken,'Accept':'application/vnd.github+json','Content-Type':'application/json',...(opts.headers||{})}});
-  if(!r.ok){let m='';try{m=(await r.json()).message||''}catch(_){}const e=new Error('GitHub '+r.status+(m?': '+m:''));e.status=r.status;const ra=+(r.headers.get('retry-after')||0),rs=+(r.headers.get('x-ratelimit-reset')||0);e.wait=ra?ra*1000:(rs&&r.headers.get('x-ratelimit-remaining')==='0'?rs*1000-Date.now():0);throw e}
+  if(!r.ok){let m='';try{m=(await r.json()).message||''}catch(_){}const e=new Error('GitHub '+r.status+(m?': '+m:''));e.status=r.status;const ra=+(r.headers.get('retry-after')||0),rs=+(r.headers.get('x-ratelimit-reset')||0);e.wait=ra?ra*1000:(rs&&r.headers.get('x-ratelimit-remaining')==='0'?rs*1000-Date.now():0);if(e.wait>0)ghUntil=Date.now()+e.wait;else if(/rate limit/i.test(m))ghUntil=Date.now()+10*60000;throw e}
   return r.json();
 }
 async function pushRemote(){
@@ -164,8 +165,8 @@ async function pushRemote(){
     UI.syncState='Sincronizado';
     UI.syncErr='';retryN=0;clearTimeout(retryTimer);
   }catch(e){console.error(e);UI.syncState='Sin sincronizar';
-    UI.syncErr=e.status===401?'El token de GitHub no es válido o ha caducado. Pon uno nuevo en Ajustes.':e.status===404?'No encuentro el Gist de la colección. Revisa la sincronización en Ajustes.':(e.status===403||e.status===429)?'GitHub ha frenado los guardados por hacer demasiados seguidos. Se reintenta solo. (Detalle: '+e.message+')':e.status===422?'GitHub ha rechazado los datos ('+e.message+').':'No se pudo conectar con GitHub ('+(e.message||'sin conexión')+'). Se reintenta solo.';
-    if(e.status!==401&&e.status!==404){retryN++;const wait=Math.min(Math.max(e.wait||0,30000*Math.pow(2,retryN-1)),15*60000);clearTimeout(retryTimer);retryTimer=setTimeout(pushRemote,wait)}}
+    UI.syncErr=e.status===401?'El token de GitHub no es válido o ha caducado. Pon uno nuevo en Ajustes.':e.status===404?'No encuentro el Gist de la colección. Revisa la sincronización en Ajustes.':(e.status===403||e.status===429)?'GitHub ha llegado al límite de peticiones por hora de tu cuenta. Se sincronizará sola'+(ghUntil>Date.now()?' hacia las '+new Date(ghUntil).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):' en cuanto pase')+'. Tus cambios están guardados en este dispositivo.':e.status===422?'GitHub ha rechazado los datos ('+e.message+').':'No se pudo conectar con GitHub ('+(e.message||'sin conexión')+'). Se reintenta solo.';
+    if(e.status!==401&&e.status!==404){retryN++;const wait=Math.min(Math.max((e.wait||0)+2000,30000*Math.pow(2,retryN-1)),65*60000);clearTimeout(retryTimer);retryTimer=setTimeout(pushRemote,wait)}}
   pushing=false;renderSync();
   if(pendingPush){pendingPush=false;pushRemote()}
 }
@@ -217,7 +218,7 @@ async function pullRemote(){
   }catch(e){UI.syncState='Sin sincronizar';renderSync();console.error(e)}
   return false;
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!saveTimer&&!pushing)pullRemote();if(document.visibilityState==='hidden'&&saveTimer){clearTimeout(saveTimer);saveTimer=null;pushRemote()}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!saveTimer&&!pushing&&Date.now()-lastPull>60000){lastPull=Date.now();pullRemote()}if(document.visibilityState==='hidden'&&saveTimer){clearTimeout(saveTimer);saveTimer=null;pushRemote()}});
 
 /* ================= Spotify: login PKCE + API ================= */
 const b64url=buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
