@@ -142,7 +142,7 @@ async function pullRemote(){
     let text=f.content;
     if(f.truncated){const r=await fetch(f.raw_url);text=await r.text()}
     const remote=JSON.parse(text);
-    if((remote.updated||0)>(D.updated||0)){D=remote;LS.set('md_data',D);UI.syncState='Sincronizado';render();return true}
+    if((remote.updated||0)>(D.updated||0)){D=remote;fixTree();LS.set('md_data',D);UI.syncState='Sincronizado';render();return true}
     if((remote.updated||0)<(D.updated||0))pushRemote();else{UI.syncState='Sincronizado';renderSync()}
   }catch(e){UI.syncState='Sin sincronizar';renderSync();console.error(e)}
   return false;
@@ -193,13 +193,19 @@ async function spAll(path,key){ // pagina siguiendo "next"
 
 /* ================= datos ================= */
 const G=id=>D.tree.genres.find(g=>g.id===id);
-const SG=(g,id)=>g&&g.subs.find(s=>s.id===id);
+function walk(list,fn,path=[]){for(const x of list||[]){fn(x,path);walk(x.subs,fn,path.concat(x))}}
+function findSub(g,id){let r=null;if(g&&id)walk(g.subs,(x,p)=>{if(x.id===id)r={s:x,path:p}});return r}
+const SG=(g,id)=>{const r=findSub(g,id);return r&&r.s};
+const subPath=(g,id)=>{const r=findSub(g,id);return r?r.path.concat(r.s):[]};
+function descIds(x){const ids=[x.id];walk(x.subs,y=>ids.push(y.id));return ids}
+function fixTree(){if(!D.tree||!Array.isArray(D.tree.genres))D.tree={genres:[]};for(const g of D.tree.genres){if(!Array.isArray(g.subs))g.subs=[];walk(g.subs,x=>{if(!Array.isArray(x.subs))x.subs=[]})}}
+function placeName(b){const r=rootOf(b),g=G(r.genreId);return g?[g.name,...subPath(g,r.subId).map(x=>x.name)].join(' / '):''}
 const bands=()=>Object.values(D.bands);
 const children=id=>bands().filter(b=>b.parentId===id).sort(byName);
 function rootOf(b){let x=b,n=0;while(x&&x.parentId&&D.bands[x.parentId]&&n++<10)x=D.bands[x.parentId];return x}
 function placeOf(b){const r=rootOf(b);const g=G(r.genreId);return{g,s:SG(g,r.subId)}}
 const topBands=f=>bands().filter(b=>!b.parentId&&f(b)).sort(byName);
-const countIn=(gid,sid)=>bands().filter(b=>{const r=rootOf(b);return r.genreId===gid&&(sid===undefined||r.subId===sid)}).length;
+const countIn=(gid,sid)=>{const ids=sid===undefined?null:new Set(descIds(SG(G(gid),sid)||{id:sid}));return bands().filter(b=>{const r=rootOf(b);return r.genreId===gid&&(!ids||ids.has(r.subId))}).length};
 const unclassified=()=>topBands(b=>!G(b.genreId));
 const bandBySid=sid=>bands().find(b=>b.sid===sid);
 const imgOf=imgs=>{if(!imgs||!imgs.length)return'';const s=imgs.slice().sort((a,b)=>(a.width||0)-(b.width||0));return(s.find(i=>(i.width||0)>=160)||s[s.length-1]).url};
@@ -244,7 +250,7 @@ const crumbs=parts=>`<nav class="path">`+parts.map((p,i)=>(i?'<span class="sep">
 const thumb=src=>src?`<img src="${esc(src)}" alt="" loading="lazy">`:'';
 function bandRow(b,showPath){
   const n=(b.albums||[]).filter(a=>a.type==='album').length,rel=children(b.id).length,pl=placeOf(b);
-  const meta=showPath?([pl.g?.name,pl.s?.name].filter(Boolean).join(' / ')||'sin clasificar'):(b.fetchedAt?`${n} disco${n===1?'':'s'}`:'')+(rel?` · ${rel} rel.`:'');
+  const meta=showPath?(placeName(b)||'sin clasificar'):(b.fetchedAt?`${n} disco${n===1?'':'s'}`:'')+(rel?` · ${rel} rel.`:'');
   return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${esc(b.name)}</span><span class="meta">${esc(meta)}</span></button>`;
 }
 function vSetup(){
@@ -263,7 +269,7 @@ function vHome(){
   if(!bands().length&&!D.tree.genres.length)return h+`<div class="empty"><b>Tu colección está vacía.</b> Empieza importando desde Spotify: tus artistas seguidos, tus álbumes guardados o tus listas. Todo cae en “Sin clasificar” y luego lo repartes por géneros.</div><div class="btns"><button class="btn primary" data-go="${J({k:'import'})}">Importar desde Spotify</button><button class="btn" data-act="newGenre">+ Género</button></div>`+(UI.form?formHtml():'');
   if(!UI.pick||!D.bands[UI.pick]){const p=rediscover();UI.pick=p&&p.id}
   const p=D.bands[UI.pick];
-  if(p){const pl=placeOf(p);h+=`<div class="pick">${p.img?`<img src="${esc(p.img)}" alt="">`:''}<div class="in"><span class="lbl">Redescubre · ${esc(ago(p.lastOpened))}</span><div class="divider">${esc(p.name)}</div><span class="hint">${esc([pl.g?.name,pl.s?.name].filter(Boolean).join(' / ')||'Sin clasificar')}</span><div class="btns"><button class="btn primary small" data-go="${J({k:'band',id:p.id})}">Abrir</button><button class="btn small" data-act="reroll">Otra</button></div></div></div>`}
+  if(p){const pl=placeOf(p);h+=`<div class="pick">${p.img?`<img src="${esc(p.img)}" alt="">`:''}<div class="in"><span class="lbl">Redescubre · ${esc(ago(p.lastOpened))}</span><div class="divider">${esc(p.name)}</div><span class="hint">${esc(placeName(p)||'Sin clasificar')}</span><div class="btns"><button class="btn primary small" data-go="${J({k:'band',id:p.id})}">Abrir</button><button class="btn small" data-act="reroll">Otra</button></div></div></div>`}
   const gs=D.tree.genres.slice().sort(byName),un=unclassified().length;
   h+=`<div class="section"><h2>Géneros</h2>`+(gs.length||un?`<div class="list crate">${gs.map(g=>`<button class="row" data-go="${J({k:'genre',g:g.id})}"><span class="tabmark"></span><span class="name divider">${esc(g.name)}</span><span class="meta">${countIn(g.id)}</span></button>`).join('')}${un?`<button class="row" data-go="${J({k:'unclassified'})}"><span class="tabmark" style="opacity:.3"></span><span class="name divider" style="color:var(--muted)">Sin clasificar</span><span class="meta">${un}</span></button>`:''}</div>`:`<div class="empty">Crea tu primer género, por ejemplo <b>Metal</b>, y dentro sus subgéneros.</div>`)+`</div>`;
   h+=`<div class="btns"><button class="btn primary" data-act="newGenre">+ Género</button><button class="btn" data-act="addBand">+ Banda</button><button class="btn" data-go="${J({k:'import'})}">Importar de Spotify</button><button class="btn" data-go="${J({k:'forgotten'})}">Olvidadas</button></div>`;
@@ -274,24 +280,27 @@ function vGenre(){
   const g=G(UI.view.g);if(!g)return fallback();
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:g.name}])+`<h1>${esc(g.name)}</h1>`;
   const subs=g.subs.slice().sort(byName);
-  h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?`<div class="list crate">${subs.map(s=>`<button class="row" data-go="${J({k:'sub',g:g.id,s:s.id})}"><span class="tabmark"></span><span class="name divider">${esc(s.name)}</span><span class="meta">${countIn(g.id,s.id)}</span></button>`).join('')}</div>`:`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
+  h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?subRows(g,subs):`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
   const loose=topBands(b=>b.genreId===g.id&&!SG(g,b.subId));
   if(loose.length)h+=`<div class="section"><h2>Sin subgénero</h2><div class="list">${loose.map(b=>bandRow(b)).join('')}</div></div>`;
   h+=`<div class="btns"><button class="btn primary" data-act="newSub">+ Subgénero</button><button class="btn" data-act="renameGenre">Renombrar</button><button class="btn danger" data-act="delGenre">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'');
 }
+function subRows(g,list){return `<div class="list crate">${list.slice().sort(byName).map(x=>`<button class="row" data-go="${J({k:'sub',g:g.id,s:x.id})}"><span class="tabmark"></span><span class="name divider">${esc(x.name)}${x.subs.length?`<span class="sub" style="font-family:var(--body);text-transform:none;letter-spacing:0">${x.subs.length} subgénero${x.subs.length===1?'':'s'}</span>`:''}</span><span class="meta">${countIn(g.id,x.id)}</span></button>`).join('')}</div>`}
 function vSub(){
   const g=G(UI.view.g),s=SG(g,UI.view.s);if(!s)return fallback();
-  let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:g.name,v:{k:'genre',g:g.id}},{t:s.name}])+`<h1>${esc(s.name)}</h1>`;
+  const path=subPath(g,s.id);
+  let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:g.name,v:{k:'genre',g:g.id}},...path.slice(0,-1).map(x=>({t:x.name,v:{k:'sub',g:g.id,s:x.id}})),{t:s.name}])+`<h1>${esc(s.name)}</h1>`;
+  if(s.subs.length)h+=`<div class="section"><h2>Subgéneros</h2>${subRows(g,s.subs)}</div>`;
   const list=topBands(b=>b.genreId===g.id&&b.subId===s.id);
-  h+=list.length?`<div class="list">${list.map(b=>bandRow(b)).join('')}</div>`:`<div class="empty">Ninguna banda aquí todavía. Muévelas desde “Sin clasificar”.</div>`;
-  h+=`<div class="btns"><button class="btn" data-act="renameSub">Renombrar</button><button class="btn danger" data-act="delSub">Borrar</button></div>`;
+  h+=`<div class="section">${s.subs.length?`<h2>Bandas en ${esc(s.name)}</h2>`:''}`+(list.length?`<div class="list">${list.map(b=>bandRow(b)).join('')}</div>`:(s.subs.length?'':`<div class="empty">Ninguna banda aquí todavía. Muévelas desde “Sin clasificar” o crea subgéneros dentro.</div>`))+`</div>`;
+  h+=`<div class="btns"><button class="btn primary" data-act="newSub">+ Subgénero</button><button class="btn" data-act="renameSub">Renombrar</button><button class="btn danger" data-act="delSub">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'');
 }
 function placeSelect(id,selG,selS,first){
   let o=`<option value="">${esc(first||'Sin clasificar')}</option>`;
   for(const g of D.tree.genres.slice().sort(byName)){o+=`<option value="${g.id}|" ${selG===g.id&&!selS?'selected':''}>${esc(g.name)}</option>`;
-    for(const s of g.subs.slice().sort(byName))o+=`<option value="${g.id}|${s.id}" ${selG===g.id&&selS===s.id?'selected':''}>${esc(g.name)} / ${esc(s.name)}</option>`}
+    const rec=(list,pre)=>{for(const x of list.slice().sort(byName)){const lbl=pre+' / '+x.name;o+=`<option value="${g.id}|${x.id}" ${selG===g.id&&selS===x.id?'selected':''}>${esc(lbl)}</option>`;rec(x.subs,lbl)}};rec(g.subs,g.name)}
   return `<select id="${id}">${o}</select>`;
 }
 function vUnclassified(){
@@ -307,7 +316,7 @@ function vUnclassified(){
   return h;
 }
 function autoMatches(){
-  const subs=[];for(const g of D.tree.genres)for(const s of g.subs)subs.push({g,s,n:norm(s.name)});
+  const subs=[];for(const g of D.tree.genres)walk(g.subs,x=>subs.push({g,s:x,n:norm(x.name)}));subs.sort((a,b)=>b.n.length-a.n.length);
   const gens=D.tree.genres.map(g=>({g,n:norm(g.name)}));
   const out=[];
   for(const b of unclassified()){
@@ -323,7 +332,7 @@ function vBand(){
   const b=D.bands[UI.view.id];if(!b)return fallback();
   const pl=placeOf(b),parts=[{t:'Inicio',v:{k:'home'}}];
   if(pl.g)parts.push({t:pl.g.name,v:{k:'genre',g:pl.g.id}});else parts.push({t:'Sin clasificar',v:{k:'unclassified'}});
-  if(pl.s)parts.push({t:pl.s.name,v:{k:'sub',g:pl.g.id,s:pl.s.id}});
+  if(pl.s)subPath(pl.g,pl.s.id).forEach(x=>parts.push({t:x.name,v:{k:'sub',g:pl.g.id,s:x.id}}));
   const chain=[];let x=b;while(x.parentId&&D.bands[x.parentId]&&chain.length<10){x=D.bands[x.parentId];chain.unshift(x)}
   chain.forEach(c=>parts.push({t:c.name,v:{k:'band',id:c.id}}));parts.push({t:b.name});
   let h=crumbs(parts)+`<div class="hero">${b.img?`<img src="${esc(b.img)}" alt="">`:''}<div class="in"><h1>${esc(b.name)}</h1>${b.note?`<span class="hint">${esc(b.note)}</span>`:''}${(b.spGenres||[]).length?`<div class="tags">${b.spGenres.slice(0,6).map(g=>`<span class="tag">${esc(g)}</span>`).join('')}</div>`:''}</div></div>`;
@@ -333,7 +342,7 @@ function vBand(){
   const hidden=new Set(b.hidden||[]);
   const al=(b.albums||[]).filter(a=>!hidden.has(a.id)).sort((p,q)=>(p.y||'9999').localeCompare(q.y||'9999')||p.t.localeCompare(q.t,'es'));
   const main=al.filter(a=>a.type!=='single'),singles=al.filter(a=>a.type==='single');
-  const row=a=>`<div class="row"><span class="yr">${esc(a.y||'—')}</span><a class="name" href="https://open.spotify.com/album/${esc(a.id)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${esc(a.t)}${a.type==='compilation'?'<span class="sub">Recopilatorio</span>':''}</a><button class="btn small" data-act="hideAlbum" data-a="${esc(a.id)}" title="Ocultar este disco" aria-label="Ocultar">✕</button></div>`;
+  const row=a=>`<div class="row">${a.img?`<img src="${esc(a.img)}" alt="" loading="lazy">`:''}<span class="yr">${esc(a.y||'—')}</span><a class="name" href="https://open.spotify.com/album/${esc(a.id)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${esc(a.t)}${a.type==='compilation'?'<span class="sub">Recopilatorio</span>':''}</a><button class="btn small" data-act="hideAlbum" data-a="${esc(a.id)}" title="Ocultar este disco" aria-label="Ocultar">✕</button></div>`;
   h+=`<div class="section"><h2>Discografía · ${main.length}</h2>`;
   if(!b.sid)h+=`<div class="empty">Esta banda no está enlazada a Spotify. Usa “Mover / editar” para enlazarla.</div>`;
   else if(!b.fetchedAt)h+=`<div class="empty">${tok?'Cargando…':'Conecta Spotify (en Ajustes) para ver la discografía.'}</div>`;
@@ -407,7 +416,7 @@ async function submitForm(id){
   if(id==='f_sync'){cfg.ghToken=val('f_gh');cfg.gistId=val('f_gist');LS.set('md_cfg',cfg);if(cfg.ghToken){if(cfg.gistId){const changed=await pullRemote();if(!changed)await pushRemote()}else await pushRemote();say(cfg.gistId?'Sincronización activada. ID del Gist: '+cfg.gistId:'No se pudo crear el Gist. Revisa el token.',!cfg.gistId)}render();return}
   const f=UI.form,v=UI.view;
   if(f.t==='genre'){const n=val('f_name');if(!n)return;D.tree.genres.push({id:rid(),name:n,subs:[]});touch()}
-  else if(f.t==='sub'){const n=val('f_name');if(!n)return;G(v.g).subs.push({id:rid(),name:n});touch()}
+  else if(f.t==='sub'){const n=val('f_name');if(!n)return;const host=v.k==='sub'?SG(G(v.g),v.s):G(v.g);host.subs.push({id:rid(),name:n,subs:[]});touch()}
   else if(f.t==='renameGenre'){const n=val('f_name');if(!n)return;G(v.g).name=n;touch()}
   else if(f.t==='renameSub'){const n=val('f_name');if(!n)return;SG(G(v.g),v.s).name=n;touch()}
   else if(f.t==='spsearch'){f.q=val('f_sq');if(!f.q)return;try{UI.spResults=(await sp('/search?type=artist&limit=10&q='+encodeURIComponent(f.q))).artists.items}catch(e){say(e.message==='nologin'?'Conecta Spotify en Ajustes.':e.message,true)}render();return}
@@ -462,11 +471,11 @@ app.addEventListener('click',async e=>{
     case'moveSel':{const [gg,ss]=(document.getElementById('f_move').value||'|').split('|');if(!gg){say('Elige un destino en la lista.',true);return}let n=0;for(const id of UI.sel){const b=D.bands[id];if(b){b.genreId=gg;b.subId=ss||null;n++}}UI.sel.clear();touch();say(`${n} movida${n===1?'':'s'}.`);break}
     case'autoClass':{const m=autoMatches();for(const x of m){x.b.genreId=x.g;x.b.subId=x.s}touch();say(`${m.length} clasificada${m.length===1?'':'s'} por sus géneros de Spotify.`);break}
     case'delGenre':{const n=countIn(v.g);UI.form=null;UI.confirm={w:'genre',msg:n?`Tiene ${n} banda(s); pasarán a “Sin clasificar”. ¿Borrar el género y sus subgéneros?`:'¿Borrar este género y sus subgéneros?'};render();break}
-    case'delSub':{const n=countIn(v.g,v.s);UI.form=null;UI.confirm={w:'sub',msg:n?`Hay ${n} banda(s); quedarán en el género sin subgénero. ¿Borrar el subgénero?`:'¿Borrar este subgénero?'};render();break}
+    case'delSub':{const n=countIn(v.g,v.s),fs=findSub(G(v.g),v.s),up=fs.path.length?fs.path[fs.path.length-1].name:G(v.g).name;UI.form=null;UI.confirm={w:'sub',msg:(n?`Hay ${n} banda(s) aquí o en sus subgéneros; pasarán a “${up}”. `:'')+'¿Borrar este subgénero'+(fs.s.subs.length?' y los que tiene dentro':'')+'?'};render();break}
     case'askDelBand':{const b=D.bands[v.id],n=children(b.id).length;UI.form=null;UI.confirm={w:'band',msg:`¿Quitar “${b.name}” de tu colección?`+(n?` Sus ${n} relacionado(s) pasarán a “Sin clasificar”.`:'')+' En Spotify no cambia nada.'};render();break}
     case'confirmYes':{const w=UI.confirm.w;UI.confirm=null;
       if(w==='genre'){for(const b of bands())if(b.genreId===v.g){b.genreId=null;b.subId=null}D.tree.genres=D.tree.genres.filter(g=>g.id!==v.g);touch();go({k:'home'})}
-      else if(w==='sub'){for(const b of bands())if(b.genreId===v.g&&b.subId===v.s)b.subId=null;const g=G(v.g);g.subs=g.subs.filter(s=>s.id!==v.s);touch();go({k:'genre',g:v.g})}
+      else if(w==='sub'){const g=G(v.g),fs=findSub(g,v.s),parent=fs.path.length?fs.path[fs.path.length-1]:null,ids=new Set(descIds(fs.s));for(const b of bands())if(b.genreId===v.g&&ids.has(b.subId))b.subId=parent?parent.id:null;const host=parent||g;host.subs=host.subs.filter(x=>x.id!==v.s);touch();go(parent?{k:'sub',g:g.id,s:parent.id}:{k:'genre',g:g.id})}
       else if(w==='band'){const b=D.bands[v.id];const pl=placeOf(b);for(const c of children(b.id)){c.parentId=null;c.genreId=null;c.subId=null}delete D.bands[b.id];touch();go(b.parentId&&D.bands[b.parentId]?{k:'band',id:b.parentId}:pl.s?{k:'sub',g:pl.g.id,s:pl.s.id}:pl.g?{k:'genre',g:pl.g.id}:{k:'home'})}
       break}
     case'impFollow':runImport('Leyendo artistas seguidos…',async prog=>{let url='/me/following?type=artist&limit=50',n=0,added=0;while(url&&n++<100){const r=await sp(url);for(const ar of r.artists.items)if(addArtist(ar).isNew)added++;prog(bands().length);url=r.artists.next}return added});break;
@@ -503,7 +512,7 @@ function render(){
 }
 
 /* ================= arranque ================= */
-(async()=>{render();await handleCallback();render();await pullRemote();})();
+(async()=>{fixTree();render();await handleCallback();render();await pullRemote();})();
 })();
 </script>
 </body>
