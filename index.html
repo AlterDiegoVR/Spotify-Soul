@@ -763,6 +763,7 @@ function renderInner(){
 function showFatal(e){console.error(e);app.innerHTML=`<header class="top"><button class="brand" onclick="location.reload()">Spotify <span>Soul</span></button></header><div class="notice err"><b>Algo ha fallado al mostrar la colección.</b> Copia este mensaje y pásaselo a Claude:<br><code>${esc((e&&e.message)||e)}</code><br><code>${esc(((e&&e.stack)||'').split('\n').slice(0,3).join(' | '))}</code></div><div class="btns"><button class="btn" onclick="location.reload()">Recargar</button></div>`}
 window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(ev.error||ev.message)});
 window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
+try{if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(_){}
 (async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();})();
 })();
 </script>
