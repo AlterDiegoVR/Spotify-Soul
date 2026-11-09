@@ -164,7 +164,7 @@ async function pushRemote(){
     UI.syncState='Sincronizado';
     UI.syncErr='';retryN=0;clearTimeout(retryTimer);
   }catch(e){console.error(e);UI.syncState='Sin sincronizar';
-    UI.syncErr=e.status===401?'El token de GitHub no es válido o ha caducado. Pon uno nuevo en Ajustes.':e.status===404?'No encuentro el Gist de la colección. Revisa la sincronización en Ajustes.':(e.status===403||e.status===429)?'GitHub ha frenado los guardados por hacer demasiados seguidos. Se reintenta solo.':e.status===422?'GitHub ha rechazado los datos ('+e.message+').':'No se pudo conectar con GitHub ('+(e.message||'sin conexión')+'). Se reintenta solo.';
+    UI.syncErr=e.status===401?'El token de GitHub no es válido o ha caducado. Pon uno nuevo en Ajustes.':e.status===404?'No encuentro el Gist de la colección. Revisa la sincronización en Ajustes.':(e.status===403||e.status===429)?'GitHub ha frenado los guardados por hacer demasiados seguidos. Se reintenta solo. (Detalle: '+e.message+')':e.status===422?'GitHub ha rechazado los datos ('+e.message+').':'No se pudo conectar con GitHub ('+(e.message||'sin conexión')+'). Se reintenta solo.';
     if(e.status!==401&&e.status!==404){retryN++;const wait=Math.min(Math.max(e.wait||0,30000*Math.pow(2,retryN-1)),15*60000);clearTimeout(retryTimer);retryTimer=setTimeout(pushRemote,wait)}}
   pushing=false;renderSync();
   if(pendingPush){pendingPush=false;pushRemote()}
