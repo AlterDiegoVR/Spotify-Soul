@@ -248,17 +248,35 @@ async function access(){
   if(Date.now()>tok.exp){try{await tokenReq({grant_type:'refresh_token',refresh_token:tok.refresh})}catch(e){tok=null;LS.del('md_tok');render();throw new Error('nologin')}}
   return tok.access;
 }
-let spBlocked=LS.get('md_block',0),spQueue=Promise.resolve();
-const spWait=()=>{const p=spQueue.then(()=>sleep(350));spQueue=p.catch(()=>{});return p};
+/* Límite de Spotify: ventana móvil de 30 s. Repartimos las peticiones en paquetes: como mucho SP_MAX por cada 30 s y una pausa mínima entre ellas. */
+const SP_WIN=30000,SP_MAX=20,SP_GAP=400;
+let spBlocked=LS.get('md_block',0),spReason=LS.get('md_block_why',''),spQueue=Promise.resolve(),spTimes=[];
+async function spSlot(){
+  for(;;){const now=Date.now();spTimes=spTimes.filter(t=>now-t<SP_WIN);
+    const last=spTimes[spTimes.length-1]||0;
+    if(spTimes.length<SP_MAX&&now-last>=SP_GAP){spTimes.push(now);return}
+    const wait=spTimes.length>=SP_MAX?spTimes[0]+SP_WIN-now+50:SP_GAP-(now-last);
+    if(UI.busy&&spTimes.length>=SP_MAX){UI.busyPause=Math.ceil(wait/1000);renderBusy()}
+    await sleep(wait);UI.busyPause=0}
+}
+const spWait=()=>{const p=spQueue.then(spSlot);spQueue=p.catch(()=>{});return p};
 function waitText(){const m=Math.ceil((spBlocked-Date.now())/60000);return m<=1?'en un minuto':m<90?`en unos ${m} minutos`:`en unas ${Math.round(m/60)} horas`}
-function spErr(e){const m=e&&e.message;if(m==='nologin')return'La sesión de Spotify ha caducado. Vuelve a conectar.';if(m==='ratelimit')return`Spotify ha pedido una pausa por exceso de peticiones. Vuelve a intentarlo ${waitText()}. Lo que ya está cargado sigue disponible.`;return m||'Error de Spotify'}
+function spErr(e){const m=e&&e.message;if(m==='nologin')return'La sesión de Spotify ha caducado. Vuelve a conectar.';if(m==='ratelimit')return spReason==='quota'?`Tu app de Spotify ha agotado su cuota de peticiones (límite del modo desarrollo). Se recupera sola; vuelve a intentarlo ${waitText()}.`:`Spotify ha pedido una pausa por exceso de peticiones. Vuelve a intentarlo ${waitText()}. Lo que ya está cargado sigue disponible.`;return m||'Error de Spotify'}
 async function sp(path,tries=0){
   if(Date.now()<spBlocked)throw new Error('ratelimit');
   await spWait();
   const url=path.startsWith('http')?path:'https://api.spotify.com/v1'+path;
   const r=await fetch(url,{headers:{Authorization:'Bearer '+await access()}});
   if(r.status===401&&tries<1){tok.exp=0;return sp(path,tries+1)}
-  if(r.status===429){const s=+(r.headers.get('Retry-After')||5);if(s<=8&&tries<2){await sleep(s*1000+500);return sp(path,tries+1)}spBlocked=Date.now()+Math.max(s,30)*1000;LS.set('md_block',spBlocked);throw new Error('ratelimit')}
+  if(r.status===429){
+    let body='';try{body=JSON.stringify(await r.json())}catch(_){}
+    const quota=/quota/i.test(body);const ra=+(r.headers.get('Retry-After')||0);
+    if(!quota&&ra&&ra<=8&&tries<2){await sleep(ra*1000+500);return sp(path,tries+1)}
+    let n=LS.get('md_block_n',0)+1;LS.set('md_block_n',n);
+    const fallback=[30,120,600,1800,3600,3*3600][Math.min(n-1,5)];
+    spBlocked=Date.now()+(ra?Math.max(ra,30):fallback)*1000;spReason=quota?'quota':'rate';
+    LS.set('md_block',spBlocked);LS.set('md_block_why',spReason);spTimes=[];throw new Error('ratelimit')}
+  if(r.ok&&LS.get('md_block_n',0))LS.set('md_block_n',0);
   if(!r.ok){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('Spotify '+r.status+(m?': '+m:''))}
   return r.json();
 }
@@ -563,7 +581,7 @@ function vImport(){
 }
 function vSettings(){
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Ajustes'}])+`<h1>Ajustes</h1>`;
-  h+=`<div class="panel"><div class="divider" style="font-size:20px">Spotify</div>${tok?`<span>Conectado.</span><div class="btns"><button class="btn small" data-act="logout">Desconectar</button></div>`:`<div class="btns"><button class="btn spot" data-act="login">Conectar Spotify</button></div>`}
+  h+=`<div class="panel"><div class="divider" style="font-size:20px">Spotify</div>${Date.now()<spBlocked?`<div class="notice err">${esc(spErr({message:'ratelimit'}))} (hasta las ${new Date(spBlocked).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})})</div>`:''}${tok?`<span>Conectado.</span><div class="btns"><button class="btn small" data-act="logout">Desconectar</button></div>`:`<div class="btns"><button class="btn spot" data-act="login">Conectar Spotify</button></div>`}
   <span class="hint">Redirect URI de esta página: <code>${esc(REDIRECT)}</code></span>
   <form id="f_cidform" class="btns"><input type="text" id="f_cid" value="${esc(cfg.clientId)}" placeholder="Client ID" style="flex:1;min-width:200px"><button class="btn small" type="submit">Guardar Client ID</button></form></div>`;
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Sincronizar móvil y PC</div>`;
@@ -640,7 +658,7 @@ async function runImport(label,fn){
   catch(e){say(spErr(e),true)}
   UI.busy=null;render();
 }
-function renderBusy(){document.querySelectorAll('.notice').forEach(n=>{if(UI.busy&&n.textContent!==UI.busy&&/…/.test(n.textContent))n.textContent=UI.busy})}
+function renderBusy(){const t=UI.busy?UI.busy+(UI.busyPause?` · pausa de ${UI.busyPause} s para no saturar a Spotify`:''):'';document.querySelectorAll('.notice').forEach(n=>{if(t&&n.textContent!==t&&/…/.test(n.textContent))n.textContent=t})}
 
 /* ================= eventos ================= */
 app.addEventListener('click',async e=>{
