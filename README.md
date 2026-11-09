@@ -1,4 +1,4 @@
-# Mi Discoteca
+# Spotify Soul
 
 Tu música de Spotify ordenada como en carpetas: Género / Subgénero / Banda / Año - Disco.
 

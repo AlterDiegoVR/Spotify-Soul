@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0a0c0b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Mi Discoteca</title>
+<title>Spotify Soul</title>
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
@@ -157,7 +157,7 @@ async function pushRemote(){
   try{
     const body=JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(D)}}});
     if(!cfg.gistId){
-      const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:'Mi Discoteca (datos)',public:false,files:{[GIST_FILE]:{content:JSON.stringify(D)}}})});
+      const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:'Spotify Soul (datos)',public:false,files:{[GIST_FILE]:{content:JSON.stringify(D)}}})});
       cfg.gistId=g.id;LS.set('md_cfg',cfg);
     }else await gh('/gists/'+cfg.gistId,{method:'PATCH',body});
     UI.syncState='Sincronizado';
@@ -725,12 +725,12 @@ function renderInner(){
   if(cfg.clientId&&!tok&&v!=='settings')notes+=`<div class="notice">Spotify no está conectado. <button class="btn small spot" data-act="login">Conectar</button></div>`;
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
   const n=bands().length;
-  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt="">Mi <span>Discoteca</span></button><div class="btns"><span class="sync" id="syncst">${esc(UI.syncState)}</span>${cfg.clientId?`<button class="btn small" data-act="settings">Ajustes</button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
+  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt="">Spotify <span>Soul</span></button><div class="btns"><span class="sync" id="syncst">${esc(UI.syncState)}</span>${cfg.clientId?`<button class="btn small" data-act="settings">Ajustes</button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
   for(const id in keep){const el=document.getElementById(id);if(el&&el.type!=='checkbox')el.value=keep[id]}
 }
 
 /* ================= arranque ================= */
-function showFatal(e){console.error(e);app.innerHTML=`<header class="top"><button class="brand" onclick="location.reload()">Mi <span>Discoteca</span></button></header><div class="notice err"><b>Algo ha fallado al mostrar la colección.</b> Copia este mensaje y pásaselo a Claude:<br><code>${esc((e&&e.message)||e)}</code><br><code>${esc(((e&&e.stack)||'').split('\n').slice(0,3).join(' | '))}</code></div><div class="btns"><button class="btn" onclick="location.reload()">Recargar</button></div>`}
+function showFatal(e){console.error(e);app.innerHTML=`<header class="top"><button class="brand" onclick="location.reload()">Spotify <span>Soul</span></button></header><div class="notice err"><b>Algo ha fallado al mostrar la colección.</b> Copia este mensaje y pásaselo a Claude:<br><code>${esc((e&&e.message)||e)}</code><br><code>${esc(((e&&e.stack)||'').split('\n').slice(0,3).join(' | '))}</code></div><div class="btns"><button class="btn" onclick="location.reload()">Recargar</button></div>`}
 window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(ev.error||ev.message)});
 window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
 (async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{render()}catch(e){showFatal(e)}await pullRemote();})();
