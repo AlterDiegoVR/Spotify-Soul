@@ -338,8 +338,22 @@ async function access(){
 }
 let spBlocked=LS.get('md_block',0),spQueue=Promise.resolve();
 const spWait=()=>{const p=spQueue.then(()=>sleep(350));spQueue=p.catch(()=>{});return p};
+let spWhy=LS.get('md_block_why','');
+async function on429(r){
+  let body='';try{body=await r.text()}catch(_){}
+  const ra=+(r.headers.get('Retry-After')||0),quota=/quota/i.test(body);
+  const n=LS.get('md_block_n',0)+1;LS.set('md_block_n',n);
+  // Si Spotify sigue diciendo que no tras varias esperas, es la cuota: alargamos la pausa en vez de insistir
+  const ladder=[30,120,600,1800,3600,3*3600,6*3600];
+  let secs=quota?Math.max(ra,3600):Math.max(ra||0,ladder[Math.min(n-1,ladder.length-1)]);
+  spWhy=quota?'quota':n>=3?'repeat':'rate';LS.set('md_block_why',spWhy);
+  spBlocked=Date.now()+secs*1000;LS.set('md_block',spBlocked);
+  bgPause=Math.max(spBlocked,Date.now()+(spWhy==='rate'?15*60000:12*3600e3));LS.set('md_bgpause',bgPause);
+  console.warn('Spotify 429',{retryAfter:ra,quota,n,body:body.slice(0,200)});
+}
+function spOk(){if(LS.get('md_block_n',0)){LS.set('md_block_n',0);spWhy='';LS.set('md_block_why','')}}
 function waitText(){const m=Math.ceil((spBlocked-Date.now())/60000);return m<=1?'en un minuto':m<90?`en unos ${m} minutos`:`en unas ${Math.round(m/60)} horas`}
-function spErr(e){const m=e&&e.message;if(m==='nologin')return'La sesión de Spotify ha caducado. Vuelve a conectar.';if(m==='ratelimit')return`Spotify ha pedido una pausa por exceso de peticiones. Vuelve a intentarlo ${waitText()}. Lo que ya está cargado sigue disponible.`;return m||'Error de Spotify'}
+function spErr(e){const m=e&&e.message;if(m==='nologin')return'La sesión de Spotify ha caducado. Vuelve a conectar.';if(m==='ratelimit'&&spWhy==='quota')return`Tu app de Spotify ha agotado su cuota (límite del modo desarrollo). Suele tardar horas en recuperarse; la app volverá a probar sola a las ${new Date(spBlocked).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}. Lo que ya está cargado sigue disponible.`;if(m==='ratelimit'&&spWhy==='repeat')return`Spotify sigue rechazando peticiones aunque la app ha esperado; seguramente es la cuota diaria de tu app, que tarda horas en recuperarse. Volverá a probar sola a las ${new Date(spBlocked).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}. Lo que ya está cargado sigue disponible.`;if(m==='ratelimit')return`Spotify ha pedido una pausa por exceso de peticiones. Vuelve a intentarlo ${waitText()}. Lo que ya está cargado sigue disponible.`;return m||'Error de Spotify'}
 /* Prioridad: lo que pide el usuario va primero. Las tareas de fondo esperan a que no haya actividad reciente,
    van muy espaciadas y se paran un buen rato si Spotify pide pausa. */
 let lastFg=0,lastBg=0,bgPause=LS.get('md_bgpause',0),spPending=0;
@@ -355,9 +369,9 @@ async function sp(path,tries=0,bg=false){
   const url=path.startsWith('http')?path:'https://api.spotify.com/v1'+path;
   const r=await fetch(url,{headers:{Authorization:'Bearer '+await access()}});
   if(r.status===401&&tries<1){tok.exp=0;return sp(path,tries+1,bg)}
-  if(r.status===429){const s=+(r.headers.get('Retry-After')||5);bgPause=Date.now()+Math.max(s*1000,15*60000);LS.set('md_bgpause',bgPause);if(!bg&&s<=8&&tries<2){await sleep(s*1000+500);return sp(path,tries+1,bg)}spBlocked=Date.now()+Math.max(s,30)*1000;LS.set('md_block',spBlocked);throw new Error('ratelimit')}
+  if(r.status===429){await on429(r);throw new Error('ratelimit')}
   if(!r.ok){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('Spotify '+r.status+(m?': '+m:''))}
-  return r.json();
+  spOk();return r.json();
 }
 async function spPost(path,body,tries=0){
   if(Date.now()<spBlocked)throw new Error('ratelimit');
@@ -365,7 +379,7 @@ async function spPost(path,body,tries=0){
   const r=await fetch('https://api.spotify.com/v1'+path,{method:'POST',headers:{Authorization:'Bearer '+await access(),'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(r.status===401&&tries<1){tok.exp=0;return spPost(path,body,tries+1)}
   if(r.status===403){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('scope:'+m)}
-  if(r.status===429){const s=+(r.headers.get('Retry-After')||5);spBlocked=Date.now()+Math.max(s,30)*1000;LS.set('md_block',spBlocked);throw new Error('ratelimit')}
+  if(r.status===429){await on429(r);throw new Error('ratelimit')}
   if(!r.ok){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('Spotify '+r.status+(m?': '+m:''))}
   return r.status===204?{}:r.json();
 }
@@ -785,7 +799,7 @@ function vBand(){
   const main=al.filter(a=>a.type!=='single'),singles=al.filter(a=>a.type==='single');
   const row=a=>albumRow(b,a);
   if(!b.sid)h+=`<div class="section"><div class="empty">Esta banda no está enlazada a Spotify.</div>`;
-  else if(!b.fetchedAt)h+=`<div class="section"><h2>Discografía</h2><div class="empty">${!tok?'Conecta Spotify (en Ajustes) para ver la discografía.':Date.now()<spBlocked?`Spotify ha pedido una pausa. La discografía se cargará sola ${waitText()}; no hace falta que hagas nada.`:'Cargando…'}</div>`;
+  else if(!b.fetchedAt)h+=`<div class="section"><h2>Discografía</h2><div class="empty">${!tok?'Conecta Spotify (en Ajustes) para ver la discografía.':Date.now()<spBlocked?`${esc(spErr({message:'ratelimit'}))} La discografía se cargará sola cuando termine la pausa.`:'Cargando…'}</div>`;
   else if(picked.size&&!UI.fullDisco){
     const mine=al.filter(a=>picked.has(a.id));
     h+=`<div class="section"><h2>Mi selección · ${mine.length}</h2><div class="list">${mine.map(row).join('')}</div><button class="btn small" data-act="fullDisco" style="align-self:flex-start">Ver discografía completa (${al.length})</button>`;
@@ -1156,6 +1170,7 @@ function renderInner(){
   const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='rated'||v==='albums'?vAlbums():v==='roulette'?vRoulette():v==='today'?vToday():v==='mkpl'?vMakePlaylist():v==='tutorial'?vTutorial(false):v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
   let notes='';
   if(cfg.clientId&&!tok&&v!=='settings')notes+=`<div class="notice">Spotify no está conectado. <button class="btn small spot" data-act="login">Conectar</button></div>`;
+  if(tok&&Date.now()<spBlocked&&!(UI.msg&&/Spotify/.test(UI.msg.text)))notes+=`<div class="notice err">${esc(spErr({message:'ratelimit'}))}</div>`;
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
   if(UI.undo)notes+=`<div class="notice">${UI.undo.bands.length===1?`“${esc(UI.undo.bands[0].name)}” quitada de tu colección.`:`${UI.undo.bands.length} bandas quitadas de tu colección.`} <button class="btn small" data-act="undo">Deshacer</button></div>`;
   const n=bands().length;
