@@ -347,11 +347,12 @@ async function loadSim(b){
   catch(e){UI.sim[sid]=null;say(spErr(e),true)}
   if(UI.view.k==='band'&&D.bands[UI.view.id]&&D.bands[UI.view.id].sid===sid)render();
 }
-function go(v){
+function go(v,fromHistory){
   if(v.k==='band'&&!v.from&&(UI.view.k==='sub'||UI.view.k==='genre'))v={...v,from:{g:UI.view.g,s:UI.view.s||null}};
   UI.view=v;UI.undo=null;UI.dests=[];UI.claudeOut=null;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
   UI.bgPick=Math.random();
-  if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];b.lastOpened=Date.now();touch();
+  if(!fromHistory){try{const cur=history.state&&history.state.v;if(JSON.stringify(cur)!==JSON.stringify(v))history.pushState({v},'')}catch(_){}}
+  if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];if(!fromHistory){b.lastOpened=Date.now();touch()}
     if(b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>30*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;say(spErr(e),true)})}}
   render();window.scrollTo(0,0);
 }
@@ -764,7 +765,8 @@ function showFatal(e){console.error(e);app.innerHTML=`<header class="top"><butto
 window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(ev.error||ev.message)});
 window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(_){}
-(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();})();
+window.addEventListener('popstate',e=>{const v=e.state&&e.state.v;go(v&&v.k?v:{k:'home'},true)});
+(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();})();
 })();
 </script>
 </body>
