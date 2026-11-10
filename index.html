@@ -154,7 +154,15 @@ const byName=(a,b)=>String(a&&a.name||'').localeCompare(String(b&&b.name||''),'e
 const rid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 const J=v=>esc(JSON.stringify(v));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function say(text,err){UI.msg={text,err};render();clearTimeout(say.t);say.t=setTimeout(()=>{UI.msg=null;render()},6000)}
+function say(text,err){UI.msg={text,err};formFocused()?bgRender():render();clearTimeout(say.t);say.t=setTimeout(()=>{UI.msg=null;bgRender()},6000)}
+let lastTouch=0;['pointerdown','keydown','change','input','focusin'].forEach(ev=>document.addEventListener(ev,()=>{lastTouch=Date.now()},true));
+function formFocused(){const a=document.activeElement;return !!(a&&a.closest&&a.closest('#app')&&(a.tagName==='SELECT'||a.tagName==='TEXTAREA'||(a.tagName==='INPUT'&&!/^(checkbox|radio|button|submit)$/.test(a.type))))}
+let bgRT=null;
+function bgRender(){clearTimeout(bgRT);bgRT=null;
+  if(formFocused()||Date.now()-lastTouch<3000){bgRT=setTimeout(bgRender,1500);return}
+  const vals={};document.querySelectorAll('#app select[id],#app textarea[id]:not([readonly]),#app input[id]:not([type=checkbox]):not([type=radio])').forEach(e=>{vals[e.id]=e.value});
+  render();
+  for(const id in vals){const e=document.getElementById(id);if(e&&e.value!==vals[id])e.value=vals[id]}}
 
 /* ================= guardado + sincronización (Gist) ================= */
 let saveTimer=null,pushing=false,pendingPush=false,retryTimer=null,retryN=0,ghUntil=0,lastPull=0;
@@ -217,7 +225,7 @@ async function pushRemote(){
       else{
         const before=hs(D);const M=mergeData(LS.get('md_base',null),D,remote);
         D=M;fixTree();LS.set('md_data',D);changed=hs(D)!==before;
-        if(changed)render();
+        if(changed)bgRender();
         if(hs(D)!==hs(remote))await writeGist(D);
         LS.set('md_base',snapOf(D));
       }
@@ -666,7 +674,7 @@ async function mbLoader(max){
     while(run<cap&&(max||day.n<MB_DAY)&&Date.now()>=mbDown){const b=mbPick();if(!b)break;
       try{await mbSync(b,true)}catch(e){if(e.message==='mbdown')break;b.mbAt=Date.now()}
       run++;day.n++;LS.set('md_mb',day);if(UI.mbProg){UI.mbProg.done++;const el=document.getElementById('mbprog');if(el)el.textContent=`Buscando… ${UI.mbProg.done} de ${UI.mbProg.total}`}}
-  }finally{mbRunning=false;if(UI.mbProg){UI.mbProg=null;UI.busy=null;render()}}
+  }finally{mbRunning=false;if(UI.mbProg){UI.mbProg=null;UI.busy=null;bgRender()}}
 }
 /* Fotos de bandas en segundo plano: pocas por sesión y con tope diario, para no gastar la cuota de Spotify. */
 let phRunning=false;
@@ -716,7 +724,7 @@ async function spPhoto(b){
   try{const ar=await sp('/artists/'+b.sid,0,true);const im=(ar.images||[]).slice().sort((p,q)=>(q.width||0)-(p.width||0));
     if(im.length){b.img=imgOf(ar.images)||im[0].url;b.imgL=im[0].url;delete b.imgSrc;phPaint(b)}
     if(!(b.spGenres||[]).length&&ar.genres)b.spGenres=ar.genres;touch();
-    if(UI.view.k==='band'&&UI.view.id===b.id)render();
+    if(UI.view.k==='band'&&UI.view.id===b.id)bgRender();
   }catch(e){if(e.message==='ratelimit'||e.message==='nologin')b.spImgAt=0}
 }
 /* Novedades: revisa pocas favoritas al día (2 peticiones cada una) */
@@ -733,12 +741,12 @@ async function newsCheck(){
           if(b.fetchedAt&&!(b.albums||[]).some(x=>x.id===a.id))b.albums.push({id:a.id,t:a.name,y:d.slice(0,4),type:a.album_type||g,n:a.total_tracks||0,img:imgOf(a.images)})}}
       b.newsAt=Date.now()}catch(e){if(e.message==='ratelimit'||e.message==='nologin')break}}
   D.news=D.news.filter(n=>!n.seen||Date.parse(n.d||'')>lim).slice(-60);
-  touch();if(found&&UI.view.k==='home')render();
+  touch();if(found&&UI.view.k==='home')bgRender();
 }
 async function autoImport(){
   if(!tok||cfg.autoImport===false||Date.now()<spBlocked)return;
   if(Date.now()-(D.lastAuto||0)<20*3600e3)return;
-  try{const n=await importFollowed();D.lastAuto=Date.now();touch();if(n)say(`${n} grupo${n===1?'':'s'} nuevo${n===1?'':'s'} que sigues en Spotify ${n===1?'ha entrado':'han entrado'} en Sin clasificar.`);render()}catch(e){console.warn('autoImport',e)}
+  try{const n=await importFollowed();D.lastAuto=Date.now();touch();if(n)say(`${n} grupo${n===1?'':'s'} nuevo${n===1?'':'s'} que sigues en Spotify ${n===1?'ha entrado':'han entrado'} en Sin clasificar.`);bgRender()}catch(e){console.warn('autoImport',e)}
 }
 function removeBands(ids){const bs=[],kids=[];for(const id of ids){const b=D.bands[id];if(!b)continue;bs.push(JSON.parse(JSON.stringify(b)));for(const c of children(id))kids.push({id:c.id,parentId:c.parentId});}
   for(const k of kids){const c=D.bands[k.id];if(c&&ids.includes(c.parentId)){c.parentId=null}}
