@@ -475,7 +475,7 @@ function go(v,fromHistory){
   UI.view=v;UI.plDone=null;UI.rPick=null;UI.fmtOpen=null;UI.undo=null;UI.dests=[];UI.claudeOut=null;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
   UI.bgPick=Math.random();
   if(!fromHistory){try{const cur=history.state&&history.state.v;if(JSON.stringify(cur)!==JSON.stringify(v))history.pushState({v},'')}catch(_){}}
-  if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];if(!fromHistory){b.lastOpened=Date.now();touch()}phOne();
+  if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];if(!fromHistory){b.lastOpened=Date.now();touch()}setTimeout(()=>{if(UI.view.k==='band'&&UI.view.id===b.id)spPhoto(b)},4000);
     if(b.sid&&b.fetchedAt&&!b.mbDates)mbSync(b).then(ok=>{if(ok&&UI.view.k==='band'&&UI.view.id===b.id)render()}).catch(()=>{});
     if(b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>30*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;if(e.message==='ratelimit'){render();const id=b.id;setTimeout(()=>{if(UI.view.k==='band'&&UI.view.id===id&&!D.bands[id]?.fetchedAt)go(UI.view,true)},Math.max(spBlocked-Date.now(),0)+1500)}else say(spErr(e),true)})}}
   render();window.scrollTo(0,0);
@@ -669,8 +669,8 @@ async function mbLoader(max){
   }finally{mbRunning=false;if(UI.mbProg){UI.mbProg=null;UI.busy=null;render()}}
 }
 /* Fotos de bandas en segundo plano: pocas por sesión y con tope diario, para no gastar la cuota de Spotify. */
-const PH_DAY=150,PH_RUN=50,PH_GAP=2500;let phRunning=false;
-function phNeed(b){return b.sid&&!b.img&&(!b.imgTry||Date.now()-b.imgTry>30*864e5)}
+let phRunning=false;
+function phNeed(b){return !b.img&&(!b.dzTry||Date.now()-b.dzTry>30*864e5)}
 function phPick(){
   for(const id of UI.visible){const b=D.bands[id];if(b&&phNeed(b))return b}
   const all=bands().filter(phNeed);if(!all.length)return null;
@@ -682,27 +682,42 @@ function phPaint(b){
     const im=document.createElement('img');im.src=b.img;im.alt='';im.loading='lazy';
     const cb=row.querySelector('input[type=checkbox]');cb?cb.after(im):row.prepend(im)});
 }
-let phT=null;
-function phOne(){if(phT||!tok)return;phT=setTimeout(async()=>{phT=null;
-  if(Date.now()<spBlocked||phRunning)return;const b=phPick();if(!b)return;
-  try{const ar=await sp('/artists/'+b.sid,0,true);b.img=imgOf(ar.images)||'';if(!(b.spGenres||[]).length&&ar.genres)b.spGenres=ar.genres}
-  catch(e){if(e.message==='ratelimit'||e.message==='nologin')return}
-  b.imgTry=Date.now();touch();if(b.img)phPaint(b)},30000)}
+let dzN=0;
+function dzGet(path){return new Promise((ok,ko)=>{const cb='dzcb'+(++dzN)+'_'+Date.now(),sc=document.createElement('script');
+  const end=()=>{delete window[cb];sc.remove();clearTimeout(t)};const t=setTimeout(()=>{end();ko(new Error('dz timeout'))},12000);
+  window[cb]=d=>{end();ok(d)};sc.onerror=()=>{end();ko(new Error('dz error'))};
+  sc.src='https://api.deezer.com'+path+(path.includes('?')?'&':'?')+'output=jsonp&callback='+cb;document.head.appendChild(sc)})}
+function dzNorm(x){return (x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/&/g,'and').replace(/^the\s+/,'').replace(/[^a-z0-9]+/g,'')}
+async function dzPhoto(b){
+  const d=await dzGet('/search/artist?limit=10&q='+encodeURIComponent(b.name));
+  if(d&&d.error)throw new Error('dz '+(d.error.code||''));
+  const n=dzNorm(b.name),hits=(d&&d.data||[]).filter(a=>dzNorm(a.name)===n);
+  hits.sort((x,y)=>(y.nb_fan||0)-(x.nb_fan||0));
+  const a=hits[0];b.dzTry=Date.now();
+  if(!a||!a.picture_medium||/\/artist\/\//.test(a.picture_xl||a.picture_medium))return false;
+  b.img=a.picture_medium;b.imgL=a.picture_xl||a.picture_big||a.picture_medium;b.imgSrc='dz';return true;
+}
 async function photoLoader(){
-  if(phRunning||!tok||cfg.autoPhotos!==true)return;phRunning=true;
-  try{let day=LS.get('md_ph',{d:'',n:0});const today=new Date().toISOString().slice(0,10);if(day.d!==today)day={d:today,n:0};
-    let run=0;
-    while(run<PH_RUN&&day.n<PH_DAY){
-      if(!await bgGate())break;
+  if(phRunning||cfg.dzPhotos===false)return;phRunning=true;
+  try{let run=0,fails=0;
+    while(run<3000){
       const b=phPick();if(!b)break;
-      try{const ar=await sp('/artists/'+b.sid,0,true);b.img=imgOf(ar.images)||'';if(!(b.spGenres||[]).length&&ar.genres)b.spGenres=ar.genres;}
-      catch(e){if(e.message==='ratelimit'||e.message==='nologin')break}
-      b.imgTry=Date.now();run++;day.n++;LS.set('md_ph',day);
-      if(b.img)phPaint(b);
-      if(run%10===0)touch();
+      try{if(await dzPhoto(b))phPaint(b);fails=0}
+      catch(e){b.dzTry=Date.now();if(++fails>=5)break;await new Promise(r=>setTimeout(r,5000))}
+      run++;if(run%25===0)touch();
+      await new Promise(r=>setTimeout(r,300));
     }
     if(run)touch();
   }finally{phRunning=false}
+}
+async function spPhoto(b){
+  if(!b.sid||!tok||b.spImgAt||(b.img&&b.imgSrc!=='dz')||Date.now()<spBlocked)return;
+  b.spImgAt=Date.now();
+  try{const ar=await sp('/artists/'+b.sid,0,true);const im=(ar.images||[]).slice().sort((p,q)=>(q.width||0)-(p.width||0));
+    if(im.length){b.img=imgOf(ar.images)||im[0].url;b.imgL=im[0].url;delete b.imgSrc;phPaint(b)}
+    if(!(b.spGenres||[]).length&&ar.genres)b.spGenres=ar.genres;touch();
+    if(UI.view.k==='band'&&UI.view.id===b.id)render();
+  }catch(e){if(e.message==='ratelimit'||e.message==='nologin')b.spImgAt=0}
 }
 /* Novedades: revisa pocas favoritas al día (2 peticiones cada una) */
 async function newsCheck(){
@@ -974,7 +989,7 @@ function vSettings(){
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Importación</div>
   <label class="chk"><input type="checkbox" id="f_news" ${cfg.autoNews===false?'':'checked'}> Avisarme de discos nuevos de mis bandas favoritas (revisa unas pocas cada día)</label>
   <label class="chk"><input type="checkbox" id="f_mb" ${cfg.autoMB===false?'':'checked'}> Buscar en MusicBrainz las fechas originales de los discos y los géneros de cada banda (gratis, sin gastar cuota de Spotify; ${bands().filter(b=>b.mbAt).length} de ${bands().length} bandas consultadas)</label>
-  <label class="chk"><input type="checkbox" id="f_photos" ${cfg.autoPhotos===true?'checked':''}> Cargar en segundo plano las fotos de las bandas que faltan (gasta mucha cuota de Spotify; mejor dejarlo apagado) (${bands().filter(b=>b.sid&&!b.img).length} sin foto; como mucho ${PH_DAY} al día)</label>
+  <label class="chk"><input type="checkbox" id="f_photos" ${cfg.dzPhotos===false?'':'checked'}> Rellenar las fotos de bandas que faltan con fotos de Deezer (no gasta cuota de Spotify; al abrir una banda se cambia por su foto de Spotify si la tiene) (${bands().filter(b=>!b.img).length} sin foto)</label>
   <label class="chk"><input type="checkbox" id="f_auto" ${cfg.autoImport===false?'':'checked'}> Al abrir la web, añadir a Sin clasificar los grupos nuevos que sigas en Spotify (como mucho una vez al día)</label>
   <span class="hint">Bandas excluidas: las que has quitado de tu colección. No vuelven a entrar al importar; si las añades tú con + Banda, sí.</span>
   ${ign.length?`<details><summary>${ign.length} banda${ign.length===1?'':'s'} excluida${ign.length===1?'':'s'}</summary><div class="list" style="margin-top:8px">${ign.map(([sid,name])=>`<div class="row"><span class="name">${esc(name)}</span><a class="btn small spot" href="https://open.spotify.com/artist/${esc(sid)}" target="_blank" rel="noopener">Spotify ↗</a><button class="btn small" data-act="unignore" data-sid="${esc(sid)}">Permitir de nuevo</button></div>`).join('')}</div><div class="btns" style="margin-top:8px"><button class="btn small" data-act="unignoreAll">Permitir todas de nuevo</button></div></details>`:'<span class="hint">Ninguna todavía.</span>'}</div>`;
@@ -1153,7 +1168,7 @@ app.addEventListener('change',e=>{
   if(e.target.id==='f_restore'){const f=e.target.files&&e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{try{const o=JSON.parse(fr.result);if(!o||!o.bands||!o.tree)throw 0;UI.restore=o;render()}catch(_){say('Ese archivo no es una copia de Spotify Soul.',true)}};fr.readAsText(f);e.target.value='';return}
   if(e.target.id==='f_news'){cfg.autoNews=e.target.checked;LS.set('md_cfg',cfg);return}
   if(e.target.id==='f_mb'){cfg.autoMB=e.target.checked;LS.set('md_cfg',cfg);if(cfg.autoMB)mbLoader();return}
-  if(e.target.id==='f_photos'){cfg.autoPhotos=e.target.checked;LS.set('md_cfg',cfg);if(cfg.autoPhotos)photoLoader();return}
+  if(e.target.id==='f_photos'){cfg.dzPhotos=e.target.checked;LS.set('md_cfg',cfg);if(cfg.dzPhotos)photoLoader();return}
   if(e.target.id==='f_auto'){cfg.autoImport=e.target.checked;LS.set('md_cfg',cfg);return}
   if(e.target.id==='f_favplace'){UI.view={...UI.view,place:e.target.value};render();return}
   if(e.target.id==='f_alyear'){const y=e.target.value.trim();if(!y||/^\d{4}$/.test(y)){UI.view={...UI.view,year:y};render()}return}
@@ -1191,7 +1206,7 @@ window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(e
 window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(_){}
 window.addEventListener('popstate',e=>{const v=e.state&&e.state.v;go(v&&v.k?v:{k:'home'},true)});
-(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,8000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setTimeout(newsCheck,30000);setInterval(()=>mbLoader(),3600e3);})();
+(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,5000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setTimeout(newsCheck,30000);setInterval(()=>mbLoader(),3600e3);})();
 })();
 </script>
 </body>
