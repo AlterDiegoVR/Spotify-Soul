@@ -135,7 +135,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 /* ================= estado y almacenamiento local ================= */
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(_){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(_){}},del(k){try{localStorage.removeItem(k)}catch(_){}}};
 const REDIRECT=location.origin+location.pathname;
-const SCOPES='user-follow-read user-library-read playlist-read-private playlist-read-collaborative';
+const SCOPES='user-follow-read user-library-read playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public';
 const GIST_FILE='mi-discoteca.json';
 let cfg=LS.get('md_cfg',{clientId:'',ghToken:'',gistId:''});
 let tok=LS.get('md_tok',null);
@@ -315,7 +315,7 @@ async function login(){
 async function tokenReq(params){
   const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:cfg.clientId,...params})});
   const j=await r.json();if(!r.ok)throw new Error(j.error_description||j.error||('Spotify '+r.status));
-  tok={access:j.access_token,refresh:j.refresh_token||(tok&&tok.refresh),exp:Date.now()+(j.expires_in-60)*1000};
+  tok={access:j.access_token,refresh:j.refresh_token||(tok&&tok.refresh),exp:Date.now()+(j.expires_in-60)*1000,scope:j.scope||(tok&&tok.scope)||''};
   LS.set('md_tok',tok);return tok;
 }
 async function handleCallback(){
@@ -344,6 +344,16 @@ async function sp(path,tries=0){
   if(r.status===429){const s=+(r.headers.get('Retry-After')||5);if(s<=8&&tries<2){await sleep(s*1000+500);return sp(path,tries+1)}spBlocked=Date.now()+Math.max(s,30)*1000;LS.set('md_block',spBlocked);throw new Error('ratelimit')}
   if(!r.ok){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('Spotify '+r.status+(m?': '+m:''))}
   return r.json();
+}
+async function spPost(path,body,tries=0){
+  if(Date.now()<spBlocked)throw new Error('ratelimit');
+  await spWait();
+  const r=await fetch('https://api.spotify.com/v1'+path,{method:'POST',headers:{Authorization:'Bearer '+await access(),'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.status===401&&tries<1){tok.exp=0;return spPost(path,body,tries+1)}
+  if(r.status===403){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('scope:'+m)}
+  if(r.status===429){const s=+(r.headers.get('Retry-After')||5);spBlocked=Date.now()+Math.max(s,30)*1000;LS.set('md_block',spBlocked);throw new Error('ratelimit')}
+  if(!r.ok){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('Spotify '+r.status+(m?': '+m:''))}
+  return r.status===204?{}:r.json();
 }
 async function spAll(path,key){ // pagina siguiendo "next"
   let url=path,out=[],n=0;
@@ -433,7 +443,7 @@ async function loadSim(b){
 }
 function go(v,fromHistory){
   if(v.k==='band'&&!v.from&&(UI.view.k==='sub'||UI.view.k==='genre'))v={...v,from:{g:UI.view.g,s:UI.view.s||null}};
-  UI.view=v;UI.rPick=null;UI.fmtOpen=null;UI.undo=null;UI.dests=[];UI.claudeOut=null;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
+  UI.view=v;UI.plDone=null;UI.rPick=null;UI.fmtOpen=null;UI.undo=null;UI.dests=[];UI.claudeOut=null;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
   UI.bgPick=Math.random();
   if(!fromHistory){try{const cur=history.state&&history.state.v;if(JSON.stringify(cur)!==JSON.stringify(v))history.pushState({v},'')}catch(_){}}
   if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];if(!fromHistory){b.lastOpened=Date.now();touch()}
@@ -486,12 +496,27 @@ function vSetup(){
   <div class="panel"><div class="divider" style="font-size:20px">¿Ya lo usas en otro dispositivo?</div><span class="hint">Pega el código que aparece en Ajustes del otro dispositivo y tendrás aquí la misma colección.</span>
   <form id="f_code" class="btns"><input type="text" id="f_codein" placeholder="Código" autocomplete="off" style="flex:1;min-width:200px"><button class="btn small" type="submit">Usar código</button></form></div>`;
 }
+function weeklyPicks(){
+  let st=LS.get('md_remind',null);const week=7*864e5;
+  if(st&&Date.now()-st.at<week)return st.dismissed?null:st.ids.filter(id=>D.bands[id]);
+  const pool=bands().filter(b=>!b.parentId&&(b.fav||places(b).length)).sort((a,b)=>(a.lastOpened||0)-(b.lastOpened||0));
+  const favs=pool.filter(b=>b.fav).slice(0,12),rest=pool.filter(b=>!b.fav).slice(0,30);
+  const src=(favs.length>=3?favs:favs.concat(rest)).slice();const ids=[];while(src.length&&ids.length<3){const i=Math.floor(Math.random()*Math.min(src.length,10));ids.push(src.splice(i,1)[0].id)}
+  st={at:Date.now(),ids,dismissed:false};LS.set('md_remind',st);return ids}
+function homeBanners(){
+  let h='';
+  const news=(D.news||[]).filter(n=>!n.seen&&D.bands[n.b]);
+  if(news.length)h+=`<div class="panel"><div class="divider" style="font-size:20px">Novedades de tus favoritas</div><div class="list">${news.slice(0,8).map(n=>`<div class="row al">${n.img?`<img src="${esc(n.img)}" alt="" loading="lazy">`:''}<div class="name"><a class="at" href="https://open.spotify.com/album/${esc(n.a)}" target="_blank" rel="noopener">${esc(n.t)}</a><div><button class="yrb" data-go="${J({k:'band',id:n.b})}" style="font-family:var(--body);color:var(--fg)">${esc(D.bands[n.b].name)}</button> <span class="hint">· ${esc(n.d||'')}${n.type==='single'?' · Single/EP':''}</span></div></div></div>`).join('')}</div><div class="btns"><button class="btn small" data-act="newsSeen">Visto</button></div></div>`;
+  const ids=weeklyPicks();
+  if(ids&&ids.length)h+=`<div class="panel"><div class="divider" style="font-size:20px">Esta semana, redescubre</div><div class="list">${ids.map(id=>{const b=D.bands[id];return `<button class="row" data-go="${J({k:'band',id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}<span class="sub">${esc(placeName(b))} · ${esc(ago(b.lastOpened))}</span></span></button>`}).join('')}</div><div class="btns"><button class="btn small" data-act="remindOff">Cerrar hasta la semana que viene</button></div></div>`;
+  return h}
 function vHome(){
   let h=`<input class="search" id="q" type="search" placeholder="Buscar en tu colección…" value="${esc(UI.q)}" autocomplete="off">`;
   const q=norm(UI.q);
   if(q){const hits=bands().filter(b=>norm(b.name).includes(q)||(b.albums||[]).some(a=>norm(a.t).includes(q))).sort(byName).slice(0,60);
     return h+`<div class="section"><h2>Resultados</h2>${hits.length?`<div class="list">${hits.map(b=>bandRow(b,true)).join('')}</div>`:`<div class="empty">Nada con “${esc(UI.q)}” en tu colección. Para añadir una banda nueva usa “+ Banda”.</div>`}</div>`}
   if(!bands().length&&!D.tree.genres.length)return h+`<div class="empty"><b>Tu colección está vacía.</b> Empieza importando desde Spotify: tus artistas seguidos, tus álbumes guardados o tus listas. Todo cae en “Sin clasificar” y luego lo repartes por géneros.</div><div class="btns"><button class="btn primary" data-go="${J({k:'import'})}">Importar desde Spotify</button><button class="btn" data-act="newGenre">+ Género</button></div>`+(UI.form?formHtml():'');
+  h+=homeBanners();
   if(!UI.pick||!D.bands[UI.pick]){const p=rediscover();UI.pick=p&&p.id}
   const p=D.bands[UI.pick];
   if(p){const pl=placeOf(p);h+=`<div class="pick">${p.img?`<img src="${esc(p.img)}" alt="">`:''}<div class="in"><span class="lbl">Redescubre · ${esc(ago(p.lastOpened))}</span><div class="divider">${esc(p.name)}</div><span class="hint">${esc(placeName(p)||'Sin clasificar')}</span><div class="btns"><button class="btn primary small" data-go="${J({k:'band',id:p.id})}">Abrir</button><button class="btn small" data-act="reroll">Otra</button></div></div></div>`}
@@ -506,7 +531,7 @@ function vGenre(){
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:g.name}])+`<h1>${esc(g.name)}</h1>`;
   const gids=new Set();for(const x of g.subs)shareIds(x).forEach(i=>gids.add(i));
   const favs=topBands(b=>b.fav&&places(b).some(p=>p.g===g.id||gids.has(p.s)));
-  h+=`<div class="btns">${favBtn(favs.length)}<button class="btn small" data-go="${J({k:'albums',rated:true,place:g.id+'|'})}">Discos</button><button class="btn small" data-go="${J({k:'roulette',place:g.id+'|'})}">Ruleta</button></div>`;
+  h+=`<div class="btns">${favBtn(favs.length)}<button class="btn small" data-go="${J({k:'albums',rated:true,place:g.id+'|'})}">Discos</button><button class="btn small" data-go="${J({k:'roulette',place:g.id+'|'})}">Ruleta</button><button class="btn small" data-go="${J({k:'mkpl',place:g.id+'|'})}">Crear lista en Spotify</button></div>`;
   if(UI.favOnly)return h+`<div class="section"><h2>Favoritas en ${esc(g.name)}</h2>${favList(favs,true)}</div>`;
   const subs=g.subs.slice().sort(byName);
   h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?subRows(g,subs,[]):`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
@@ -605,6 +630,22 @@ async function photoLoader(){
     if(run)touch();
   }finally{phRunning=false}
 }
+/* Novedades: revisa pocas favoritas al día (2 peticiones cada una) */
+async function newsCheck(){
+  if(!tok||cfg.autoNews===false||Date.now()<spBlocked)return;
+  const favs=bands().filter(b=>b.fav&&b.sid&&(!b.newsAt||Date.now()-b.newsAt>3*864e5)).sort((a,b)=>(a.newsAt||0)-(b.newsAt||0)).slice(0,8);
+  if(!favs.length)return;let found=0;D.news=D.news||[];const known=new Set(D.news.map(n=>n.a));const lim=Date.now()-90*864e5;
+  for(const b of favs){try{
+      for(const g of ['album','single']){const r=await sp(`/artists/${b.sid}/albums?include_groups=${g}&limit=5`);
+        for(const a of r.items||[]){const d=a.release_date||'';const t=Date.parse(d.length===4?d+'-01-01':d.length===7?d+'-01':d);
+          if(!t||t<lim||known.has(a.id)||(b.albums||[]).some(x=>x.id===a.id&&b.newsAt))continue;
+          if(!b.newsAt&&(b.albums||[]).some(x=>x.id===a.id))continue;
+          known.add(a.id);D.news.push({b:b.id,a:a.id,t:a.name,d,img:imgOf(a.images),type:a.album_type||g,seen:false});found++;
+          if(b.fetchedAt&&!(b.albums||[]).some(x=>x.id===a.id))b.albums.push({id:a.id,t:a.name,y:d.slice(0,4),type:a.album_type||g,n:a.total_tracks||0,img:imgOf(a.images)})}}
+      b.newsAt=Date.now()}catch(e){if(e.message==='ratelimit'||e.message==='nologin')break}}
+  D.news=D.news.filter(n=>!n.seen||Date.parse(n.d||'')>lim).slice(-60);
+  touch();if(found&&UI.view.k==='home')render();
+}
 async function autoImport(){
   if(!tok||cfg.autoImport===false||Date.now()<spBlocked)return;
   if(Date.now()-(D.lastAuto||0)<20*3600e3)return;
@@ -625,7 +666,7 @@ function vSub(){
   const tw=twins(s).filter(t=>t.s!==s);
   if(tw.length)h+=`<div class="btns"><span class="hint">Compartido con:</span>${tw.map(t=>`<button class="btn small" data-go="${J({k:'sub',g:t.g.id,s:t.s.id})}">${esc([t.g.name,...t.path.map(z=>z.name),t.s.name].join(' / '))}</button>`).join('')}</div>`;
   const sids=shareIds(s),sfavs=topBands(b=>b.fav&&places(b).some(p=>sids.has(p.s)));
-  h+=`<div class="btns">${favBtn(sfavs.length)}<button class="btn small" data-go="${J({k:'albums',rated:true,place:g.id+'|'+s.id})}">Discos</button><button class="btn small" data-go="${J({k:'roulette',place:g.id+'|'+s.id})}">Ruleta</button></div>`;
+  h+=`<div class="btns">${favBtn(sfavs.length)}<button class="btn small" data-go="${J({k:'albums',rated:true,place:g.id+'|'+s.id})}">Discos</button><button class="btn small" data-go="${J({k:'roulette',place:g.id+'|'+s.id})}">Ruleta</button><button class="btn small" data-go="${J({k:'mkpl',place:g.id+'|'+s.id})}">Crear lista en Spotify</button></div>`;
   if(UI.favOnly)return h+`<div class="section"><h2>Favoritas en ${esc(s.name)}</h2>${favList(sfavs,true)}</div>`;
   const kids=sharedChildren(s);
   if(kids.length)h+=`<div class="section"><h2>Subgéneros</h2>${subRows(cg,kids,trail.map(z=>z.s.id).concat(s.id))}</div>`;
@@ -769,6 +810,42 @@ function vToday(){
   if(!any)h+=`<div class="empty">Ningún disco de tu colección cumple años esta semana (de los que ya tienen fecha).</div>`;
   return h;
 }
+function plPool(place,src,min){const match=scopeMatch(place),out=[];
+  for(const b of bands()){if(!match(b))continue;const PK=new Set(b.picked||[]),PD=new Set(b.pend||[]),RT=b.ratings||{},HD=new Set(b.hidden||[]);
+    for(const a of b.albums||[]){if(HD.has(a.id)||a.type==='single')continue;
+      if(src==='sel'&&!PK.has(a.id))continue;if(src==='pend'&&!PD.has(a.id))continue;if(src==='rated'&&(RT[a.id]||0)<min)continue;out.push({b,a})}}
+  return out.sort((x,y)=>byName(x.b,y.b)||(albumYear(x.b,x.a)||'').localeCompare(albumYear(y.b,y.a)||''))}
+function vMakePlaylist(){
+  const v=UI.view,[pg,ps]=(v.place||'|').split('|'),node=ps?findAny(ps):null,rname=node?[G(pg).name,...subPath(G(pg),ps).map(x=>x.name)].join(' / '):pg&&G(pg)?G(pg).name:'Toda la colección';
+  let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Crear lista en Spotify'}])+`<h1>Crear lista en Spotify</h1><span class="hint">Rama: ${esc(rname)}</span>`;
+  if(!tok)return h+`<div class="empty">Conecta Spotify primero.</div>`;
+  if(!/playlist-modify/.test(tok.scope||''))return h+`<div class="notice">Para crear listas, Spotify necesita un permiso nuevo. Vuelve a conectar tu cuenta y acepta.</div><div class="btns"><button class="btn spot" data-act="login">Volver a conectar Spotify</button></div>`;
+  const src=v.src||'sel',min=v.min||4,mode=v.mode||'one',pool=plPool(v.place,src,min),cap=50;
+  const chip=(k,val,label,on)=>`<button class="pill${on?' on':''}" data-act="plOpt" data-k="${k}" data-v="${val}">${label}</button>`;
+  h+=`<div class="section"><h2>Qué discos</h2><div class="chips">${chip('src','sel','Mi selección (✓)',src==='sel')}${chip('src','rated','Valorados',src==='rated')}${chip('src','pend','Pendientes',src==='pend')}${chip('src','all','Toda la discografía cargada',src==='all')}</div>`+
+   (src==='rated'?`<div class="chips">${[5,4,3].map(n=>chip('min',n,'★'.repeat(n)+(n<5?' o más':''),min===n)).join('')}</div>`:'')+`</div>`;
+  h+=`<div class="section"><h2>Qué canciones</h2><div class="chips">${chip('mode','one','Una canción al azar de cada disco',mode==='one')}${chip('mode','full','Discos completos',mode==='full')}</div></div>`;
+  h+=`<span class="hint">${pool.length} disco${pool.length===1?'':'s'}${pool.length>cap?`; se usarán los ${cap} primeros para no gastar demasiada cuota de Spotify`:''}. Solo cuentan las bandas con la discografía ya cargada.</span>`;
+  if(UI.plJob)return h+`<div class="notice">${esc(UI.plJob)}</div>`;
+  if(UI.plDone)h+=`<div class="notice">Lista creada. <a class="btn small spot" href="${esc(UI.plDone)}" target="_blank" rel="noopener">Abrir en Spotify</a></div>`;
+  h+=`<form id="f_pl" class="panel"><label>Nombre de la lista<input type="text" id="f_plname" value="${esc(v.name||('Spotify Soul · '+rname))}"></label><div class="btns"><button class="btn primary" type="submit" ${pool.length?'':'disabled'}>Crear lista privada</button></div></form>`;
+  return h}
+async function makePlaylist(name){
+  const v=UI.view,pool=plPool(v.place,v.src||'sel',v.min||4).slice(0,50),mode=v.mode||'one';if(!pool.length)return;
+  UI.plDone=null;const uris=[];let i=0;
+  try{
+    for(const {a} of pool){i++;UI.plJob=`Leyendo canciones… ${i}/${pool.length}`;renderBusy();render();
+      let tr;try{tr=await spAll(`/albums/${a.id}/tracks?limit=50`)}catch(e){if(/400/.test(e.message))tr=await spAll(`/albums/${a.id}/tracks?limit=10`);else throw e}
+      const us=tr.map(t=>t&&t.uri).filter(Boolean);if(!us.length)continue;
+      if(mode==='full')uris.push(...us);else uris.push(us[Math.floor(Math.random()*us.length)])}
+    UI.plJob='Creando la lista…';render();
+    const pl=await spPost('/me/playlists',{name:name||'Spotify Soul',description:'Creada con Spotify Soul',public:false});
+    for(let k=0;k<uris.length;k+=100){UI.plJob=`Añadiendo canciones… ${Math.min(k+100,uris.length)}/${uris.length}`;render();await spPost(`/playlists/${pl.id}/items`,{uris:uris.slice(k,k+100)})}
+    UI.plDone=(pl.external_urls&&pl.external_urls.spotify)||('https://open.spotify.com/playlist/'+pl.id);
+    say(`Lista creada con ${uris.length} canciones.`);
+  }catch(e){say(/^scope:/.test(e.message)?'Spotify no ha dejado crear la lista: vuelve a conectar Spotify para dar el permiso de crear listas.':spErr(e),true)}
+  UI.plJob=null;render();
+}
 function vRoulette(){
   const v=UI.view,[pg,ps]=(v.place||'|').split('|'),pool=roulettePool(v);
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Ruleta'}])+`<h1>Ruleta de discos</h1>`;
@@ -821,6 +898,7 @@ function vSettings(){
   h+=`</div>`;
   const ign=Object.entries(D.ignored||{}).sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'es'));
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Importación</div>
+  <label class="chk"><input type="checkbox" id="f_news" ${cfg.autoNews===false?'':'checked'}> Avisarme de discos nuevos de mis bandas favoritas (revisa unas pocas cada día)</label>
   <label class="chk"><input type="checkbox" id="f_mb" ${cfg.autoMB===false?'':'checked'}> Buscar en MusicBrainz las fechas originales de los discos y los géneros de cada banda (gratis, sin gastar cuota de Spotify; ${bands().filter(b=>b.mbAt).length} de ${bands().length} bandas consultadas)</label>
   <label class="chk"><input type="checkbox" id="f_photos" ${cfg.autoPhotos===false?'':'checked'}> Cargar poco a poco las fotos de las bandas que faltan (${bands().filter(b=>b.sid&&!b.img).length} sin foto; como mucho ${PH_DAY} al día)</label>
   <label class="chk"><input type="checkbox" id="f_auto" ${cfg.autoImport===false?'':'checked'}> Al abrir la web, añadir a Sin clasificar los grupos nuevos que sigas en Spotify (como mucho una vez al día)</label>
@@ -864,6 +942,7 @@ async function submitForm(id){
   if(id==='f_setup'||id==='f_cidform'){cfg.clientId=val('f_cid');LS.set('md_cfg',cfg);if(id==='f_setup'&&cfg.clientId)login();else{say('Client ID guardado.');}return}
   if(id==='f_sync'){cfg.ghToken=val('f_gh');cfg.gistId='';LS.set('md_cfg',cfg);if(!cfg.ghToken)return;await pushRemote();if(cfg.gistId){UI.showCode=true;say('Sincronización activada. Ahora copia el código y pégalo en el otro dispositivo.')}else{cfg.ghToken='';LS.set('md_cfg',cfg);say('No se pudo crear el Gist. Revisa que el token tenga permiso de Gists (lectura y escritura).',true)}render();return}
   if(id==='f_code'){await applyCode(val('f_codein'));return}
+  if(id==='f_pl'){makePlaylist(val('f_plname'));return}
   if(id==='f_claude'){applyClaude(val('f_claudein'));return}
   const f=UI.form,v=UI.view;
   if(f.t==='genre'){const n=val('f_name');if(!n)return;D.tree.genres.push({id:rid(),name:n,subs:[]});touch()}
@@ -922,6 +1001,9 @@ app.addEventListener('click',async e=>{
       if(pg){UI.form=null;render();fetchDisco(b).then(render).catch(()=>{})}else go({k:'band',id:b.id});
       break}
     case'mbUncl':{const left=unclassified().filter(b=>b.sid&&!b.mbAt).length;UI.mbPrefer='uncl';UI.mbProg={done:0,total:left};render();mbLoader(left).then(()=>{UI.mbPrefer=null;render()});break}
+    case'newsSeen':(D.news||[]).forEach(n=>n.seen=true);touch();render();break;
+    case'remindOff':{const st=LS.get('md_remind',null);if(st){st.dismissed=true;LS.set('md_remind',st)}render();break}
+    case'plOpt':{const k=a.dataset.k,val=a.dataset.v;const nv={...v,[k]:k==='min'?+val:val};const nm=document.getElementById('f_plname');if(nm)nv.name=nm.value;UI.view=nv;render();break}
     case'pend':{const b=D.bands[a.dataset.b||v.id],id=a.dataset.a,set=new Set(b.pend||[]);set.has(id)?set.delete(id):set.add(id);b.pend=[...set];touch();render();break}
     case'fmtOpen':{const k=(a.dataset.b||v.id)+'|'+a.dataset.a;UI.fmtOpen=UI.fmtOpen===k?null:k;render();break}
     case'fmt':{const b=D.bands[a.dataset.b||v.id],id=a.dataset.a,f=a.dataset.f;b.fmt=b.fmt||{};const cur=new Set(b.fmt[id]||[]);cur.has(f)?cur.delete(f):cur.add(f);if(cur.size)b.fmt[id]=FMTS.filter(x=>cur.has(x));else delete b.fmt[id];touch();render();break}
@@ -982,6 +1064,7 @@ app.addEventListener('click',async e=>{
 app.addEventListener('change',e=>{
   if(e.target.dataset.sel){e.target.checked?UI.sel.add(e.target.dataset.sel):UI.sel.delete(e.target.dataset.sel);const m=document.querySelector('.bar .meta');if(m)m.textContent=UI.sel.size+' marcadas';document.querySelectorAll('[data-act="moveSel"],[data-act="addSel"],[data-act="delSel"]').forEach(btn=>btn.disabled=!UI.sel.size)}
   if(e.target.dataset.pl){const p=UI.playlists.find(x=>x.id===e.target.dataset.pl);if(p)p.on=e.target.checked}
+  if(e.target.id==='f_news'){cfg.autoNews=e.target.checked;LS.set('md_cfg',cfg);return}
   if(e.target.id==='f_mb'){cfg.autoMB=e.target.checked;LS.set('md_cfg',cfg);if(cfg.autoMB)mbLoader();return}
   if(e.target.id==='f_photos'){cfg.autoPhotos=e.target.checked;LS.set('md_cfg',cfg);if(cfg.autoPhotos)photoLoader();return}
   if(e.target.id==='f_auto'){cfg.autoImport=e.target.checked;LS.set('md_cfg',cfg);return}
@@ -1004,7 +1087,7 @@ function renderInner(){
   UI.visible=new Set();
   const keep={};document.querySelectorAll('#frm input,#frm select,#f_claudein').forEach(el=>{if(el.id)keep[el.id]=el.value});
   const v=UI.view.k;
-  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='rated'||v==='albums'?vAlbums():v==='roulette'?vRoulette():v==='today'?vToday():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
+  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='rated'||v==='albums'?vAlbums():v==='roulette'?vRoulette():v==='today'?vToday():v==='mkpl'?vMakePlaylist():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
   let notes='';
   if(cfg.clientId&&!tok&&v!=='settings')notes+=`<div class="notice">Spotify no está conectado. <button class="btn small spot" data-act="login">Conectar</button></div>`;
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
@@ -1020,7 +1103,7 @@ window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(e
 window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(_){}
 window.addEventListener('popstate',e=>{const v=e.state&&e.state.v;go(v&&v.k?v:{k:'home'},true)});
-(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,8000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setInterval(()=>mbLoader(),3600e3);})();
+(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,8000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setTimeout(newsCheck,30000);setInterval(()=>mbLoader(),3600e3);})();
 })();
 </script>
 </body>
