@@ -537,12 +537,16 @@ function vTutorial(setup){
   ${setup||i===last?'':'<div class="btns" style="justify-content:center"><button class="btn small" data-act="tdone" style="background:none;border:0;color:var(--muted)">Saltar tutorial</button></div>'}</div>`}
 function vSetup(){return vTutorial(true)}
 function weeklyPicks(){
-  let st=LS.get('md_remind',null);const week=7*864e5;
+  let st=LS.get('md_remind2',null);const week=7*864e5;
   if(st&&Date.now()-st.at<week)return st.dismissed?null:st.ids.filter(id=>D.bands[id]);
-  const pool=bands().filter(b=>!b.parentId&&(b.fav||places(b).length)).sort((a,b)=>(a.lastOpened||0)-(b.lastOpened||0));
-  const favs=pool.filter(b=>b.fav).slice(0,12),rest=pool.filter(b=>!b.fav).slice(0,30);
-  const src=(favs.length>=3?favs:favs.concat(rest)).slice();const ids=[];while(src.length&&ids.length<3){const i=Math.floor(Math.random()*Math.min(src.length,10));ids.push(src.splice(i,1)[0].id)}
-  st={at:Date.now(),ids,dismissed:false};LS.set('md_remind',st);return ids}
+  // Solo bandas colocadas que no has abierto en el último mes (o nunca)
+  const old=Date.now()-30*864e5;
+  const pool=bands().filter(b=>!b.parentId&&places(b).length&&(b.lastOpened||0)<old).sort((a,b)=>(a.lastOpened||0)-(b.lastOpened||0));
+  const ids=[];const take=list=>{if(!list.length)return;const b=list[Math.floor(Math.random()*list.length)];if(!ids.includes(b.id))ids.push(b.id)};
+  take(pool.filter(b=>b.fav)); // como mucho una favorita olvidada
+  const oldest=pool.filter(b=>!b.fav).slice(0,Math.max(30,Math.ceil(pool.length/4)));
+  let n=0;while(ids.length<3&&n++<50)take(oldest);
+  st={at:Date.now(),ids,dismissed:false};LS.set('md_remind2',st);return ids}
 function homeBanners(){
   let h='';
   const news=(D.news||[]).filter(n=>!n.seen&&D.bands[n.b]);
