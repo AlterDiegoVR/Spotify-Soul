@@ -890,9 +890,10 @@ function vAlbums(){
   else h+=`<div class="list">${shown.map(row).join('')}</div>`;
   return h;
 }
+function inCol(b,a,PK){return PK.size?PK.has(a.id):a.type!=='single'&&a.type!=='compilation'}
 function roulettePool(v){const match=scopeMatch(v.place),src=v.src||'sel',out=[];
   for(const b of bands()){if(!match(b))continue;const PK=new Set(b.picked||[]),PD=new Set(b.pend||[]),HD=new Set(b.hidden||[]);
-    for(const a of b.albums||[]){if(HD.has(a.id)||a.type==='single')continue;if(src==='sel'&&!PK.has(a.id))continue;if(src==='pend'&&!PD.has(a.id))continue;out.push({b,a})}}
+    for(const a of b.albums||[]){if(HD.has(a.id)||a.type==='single')continue;if(src==='sel'&&!inCol(b,a,PK))continue;if(src==='pend'&&!PD.has(a.id))continue;out.push({b,a})}}
   return out}
 function vToday(){
   const now=new Date(),md=d=>d.slice(5,10),key=x=>`${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
@@ -910,7 +911,7 @@ function vToday(){
 function plPool(place,src,min){const match=scopeMatch(place),out=[];
   for(const b of bands()){if(!match(b))continue;const PK=new Set(b.picked||[]),PD=new Set(b.pend||[]),RT=b.ratings||{},HD=new Set(b.hidden||[]);
     for(const a of b.albums||[]){if(HD.has(a.id)||a.type==='single')continue;
-      if(src==='sel'&&!PK.has(a.id))continue;if(src==='pend'&&!PD.has(a.id))continue;if(src==='rated'&&(RT[a.id]||0)<min)continue;out.push({b,a})}}
+      if(src==='sel'&&!inCol(b,a,PK))continue;if(src==='pend'&&!PD.has(a.id))continue;if(src==='rated'&&(RT[a.id]||0)<min)continue;out.push({b,a})}}
   return out.sort((x,y)=>byName(x.b,y.b)||(albumYear(x.b,x.a)||'').localeCompare(albumYear(y.b,y.a)||''))}
 function vMakePlaylist(){
   const v=UI.view,[pg,ps]=(v.place||'|').split('|'),node=ps?findAny(ps):null,rname=node?[G(pg).name,...subPath(G(pg),ps).map(x=>x.name)].join(' / '):pg&&G(pg)?G(pg).name:'Toda la colección';
@@ -919,7 +920,7 @@ function vMakePlaylist(){
   if(!/playlist-modify/.test(tok.scope||''))return h+`<div class="notice">Para crear listas, Spotify necesita un permiso nuevo. Vuelve a conectar tu cuenta y acepta.</div><div class="btns"><button class="btn spot" data-act="login">Volver a conectar Spotify</button></div>`;
   const src=v.src||'sel',min=v.min||4,mode=v.mode||'one',pool=plPool(v.place,src,min),cap=50;
   const chip=(k,val,label,on)=>`<button class="pill${on?' on':''}" data-act="plOpt" data-k="${k}" data-v="${val}">${label}</button>`;
-  h+=`<div class="section"><h2>Qué discos</h2><div class="chips">${chip('src','sel','Mi selección (✓)',src==='sel')}${chip('src','rated','Valorados',src==='rated')}${chip('src','pend','Pendientes',src==='pend')}${chip('src','all','Toda la discografía cargada',src==='all')}</div>`+
+  h+=`<div class="section"><h2>Qué discos</h2><div class="chips">${chip('src','sel','Mi colección',src==='sel')}${chip('src','rated','Valorados',src==='rated')}${chip('src','pend','Pendientes',src==='pend')}${chip('src','all','Toda la discografía cargada',src==='all')}</div>`+
    (src==='rated'?`<div class="chips">${[5,4,3].map(n=>chip('min',n,'★'.repeat(n)+(n<5?' o más':''),min===n)).join('')}</div>`:'')+`</div>`;
   h+=`<div class="section"><h2>Qué canciones</h2><div class="chips">${chip('mode','one','Una canción al azar de cada disco',mode==='one')}${chip('mode','full','Discos completos',mode==='full')}</div></div>`;
   h+=`<span class="hint">${pool.length} disco${pool.length===1?'':'s'}${pool.length>cap?`; se usarán los ${cap} primeros para no gastar demasiada cuota de Spotify`:''}. Solo cuentan las bandas con la discografía ya cargada.</span>`;
@@ -947,8 +948,8 @@ function vRoulette(){
   const v=UI.view,[pg,ps]=(v.place||'|').split('|'),pool=roulettePool(v);
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Ruleta'}])+`<h1>Ruleta de discos</h1>`;
   const chip=(val,label)=>`<button class="pill${(v.src||'sel')===val?' on':''}" data-act="rsrc" data-v="${val}">${label}</button>`;
-  h+=`<div class="chips">${chip('sel','Mi selección')}${chip('pend','Pendientes')}${chip('all','Toda la discografía cargada')}</div><label>Género${placeSelect('f_roplace',pg,ps,'Todos los géneros')}</label>`;
-  if(!pool.length)return h+`<div class="empty">${(v.src||'sel')==='sel'?'No hay discos marcados con ✓ aquí. Prueba con “Toda la discografía cargada”.':(v.src==='pend')?'No hay discos pendientes aquí.':'Todavía no hay discografías cargadas en esta rama. Se cargan al abrir cada banda.'}</div>`;
+  h+=`<div class="chips">${chip('sel','Mi colección')}${chip('pend','Pendientes')}${chip('all','Toda la discografía cargada')}</div><label>Género${placeSelect('f_roplace',pg,ps,'Todos los géneros')}</label>`;
+  if(!pool.length)return h+`<div class="empty">${(v.src||'sel')==='sel'?'No hay discos de tu colección aquí todavía (las discografías se cargan al abrir cada banda). Prueba con “Toda la discografía cargada”.':(v.src==='pend')?'No hay discos pendientes aquí.':'Todavía no hay discografías cargadas en esta rama. Se cargan al abrir cada banda.'}</div>`;
   let pk=UI.rPick&&pool.find(x=>x.b.id===UI.rPick.b&&x.a.id===UI.rPick.a);
   if(!pk){const cand=pool.length>1&&UI.rLast?pool.filter(x=>x.a.id!==UI.rLast):pool;pk=cand[Math.floor(Math.random()*cand.length)];UI.rPick={b:pk.b.id,a:pk.a.id};UI.rLast=pk.a.id}
   const {b,a}=pk;
