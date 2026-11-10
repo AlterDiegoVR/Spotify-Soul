@@ -475,7 +475,7 @@ function go(v,fromHistory){
   UI.view=v;UI.plDone=null;UI.rPick=null;UI.fmtOpen=null;UI.undo=null;UI.dests=[];UI.claudeOut=null;UI.selMode=false;UI.fullDisco=false;UI.form=null;UI.confirm=null;UI.q='';UI.sel.clear();UI.spResults=null;
   UI.bgPick=Math.random();
   if(!fromHistory){try{const cur=history.state&&history.state.v;if(JSON.stringify(cur)!==JSON.stringify(v))history.pushState({v},'')}catch(_){}}
-  if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];if(!fromHistory){b.lastOpened=Date.now();touch()}
+  if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];if(!fromHistory){b.lastOpened=Date.now();touch()}phOne();
     if(b.sid&&b.fetchedAt&&!b.mbDates)mbSync(b).then(ok=>{if(ok&&UI.view.k==='band'&&UI.view.id===b.id)render()}).catch(()=>{});
     if(b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>30*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;if(e.message==='ratelimit'){render();const id=b.id;setTimeout(()=>{if(UI.view.k==='band'&&UI.view.id===id&&!D.bands[id]?.fetchedAt)go(UI.view,true)},Math.max(spBlocked-Date.now(),0)+1500)}else say(spErr(e),true)})}}
   render();window.scrollTo(0,0);
@@ -682,6 +682,12 @@ function phPaint(b){
     const im=document.createElement('img');im.src=b.img;im.alt='';im.loading='lazy';
     const cb=row.querySelector('input[type=checkbox]');cb?cb.after(im):row.prepend(im)});
 }
+let phT=null;
+function phOne(){if(phT||!tok)return;phT=setTimeout(async()=>{phT=null;
+  if(Date.now()<spBlocked||phRunning)return;const b=phPick();if(!b)return;
+  try{const ar=await sp('/artists/'+b.sid,0,true);b.img=imgOf(ar.images)||'';if(!(b.spGenres||[]).length&&ar.genres)b.spGenres=ar.genres}
+  catch(e){if(e.message==='ratelimit'||e.message==='nologin')return}
+  b.imgTry=Date.now();touch();if(b.img)phPaint(b)},30000)}
 async function photoLoader(){
   if(phRunning||!tok||cfg.autoPhotos!==true)return;phRunning=true;
   try{let day=LS.get('md_ph',{d:'',n:0});const today=new Date().toISOString().slice(0,10);if(day.d!==today)day={d:today,n:0};
