@@ -247,7 +247,10 @@ Eres un experto en música. Debajo hay un JSON exportado de Spotify Soul, una ap
 
 Qué contiene el JSON:
 - "generos": cada carpeta del árbol del usuario, con su "id" y su "ruta" completa (por ejemplo "METAL / HEAVY METAL / NWOBHM").
-- "bandas": cada banda con su "id" interno, su "nombre", a veces "spotify" (géneros que le asigna Spotify) y "sid" (su perfil de Spotify: https://open.spotify.com/artist/SID).
+- "bandas": cada banda con su "id" interno, su "nombre", y a veces:
+  · "mb": géneros que le asigna la comunidad de MusicBrainz, ordenados de más a menos votado. Es la mejor pista para bandas poco conocidas.
+  · "spotify": géneros que le asigna Spotify.
+  · "sid": su perfil de Spotify (https://open.spotify.com/artist/SID).
 ${all?`- "en": los ids de las carpetas donde está ahora cada banda (vacío = sin clasificar).
 
 Tu tarea: coloca las bandas que tienen "en" vacío. Además, si el usuario ha creado carpetas nuevas donde encaja mejor una banda ya colocada, o una banda está claramente mal colocada, propón moverla.`:`
@@ -257,8 +260,9 @@ Reglas:
 1. Usa siempre la carpeta más concreta que encaje (un subgénero antes que su género padre).
 2. Una banda puede ir a varias carpetas si de verdad encaja en varios estilos (como mucho 3).
 3. Usa solo ids que aparezcan en "generos". No inventes carpetas.
-4. Si no conoces la banda, o el nombre puede corresponder a varias bandas distintas, déjala fuera. Es mejor que quede sin clasificar a que quede mal clasificada.${all?`
-5. Para mover una banda que ya está colocada, añade "mover":1 y pon en "a" la lista COMPLETA de carpetas donde debe quedar (sustituye a las actuales). Las bandas que no haya que cambiar, no las incluyas.`:''}
+4. Si no conoces la banda, apóyate en "mb" y "spotify". Si aun así no hay pista suficiente, o el nombre puede corresponder a varias bandas distintas, déjala fuera. Es mejor que quede sin clasificar a que quede mal clasificada.
+5. Las carpetas son del usuario y pueden tener nombres propios o abreviados ("PROG METAL", "TECH THRASH", "SOUTHERN ROCK"…). Interprétalas por su significado, no por coincidencia exacta de texto con las etiquetas.${all?`
+6. Para mover una banda que ya está colocada, añade "mover":1 y pon en "a" la lista COMPLETA de carpetas donde debe quedar (sustituye a las actuales). Las bandas que no haya que cambiar, no las incluyas.`:''}
 
 Formato de la respuesta: solo un bloque de código JSON como este (los ids son de ejemplo):
 {"asignar":[{"id":"ID_DE_LA_BANDA","a":["ID_DE_CARPETA","OTRO_ID"]}${all?`,{"id":"ID_DE_OTRA_BANDA","a":["ID_DE_CARPETA"],"mover":1}`:''}]}
@@ -272,7 +276,7 @@ DATOS:
 function exportForClaude(all){
   const nodes=[];for(const g of D.tree.genres.slice().sort(byName)){nodes.push({id:g.id,ruta:g.name});const rec=(list,pre)=>{for(const x of list.slice().sort(byName)){const r=pre+' / '+x.name;nodes.push({id:x.id,ruta:r});rec(x.subs,r)}};rec(g.subs,g.name)}
   const src=all?topBands(()=>true):unclassified();
-  const bs=src.map(b=>{const o={id:b.id,nombre:b.name};if(b.sid)o.sid=b.sid;if((b.spGenres||[]).length)o.spotify=b.spGenres.slice(0,5);if(all)o.en=places(b).map(p=>p.s||p.g);return o});
+  const bs=src.map(b=>{const o={id:b.id,nombre:b.name};if(b.sid)o.sid=b.sid;if((b.spGenres||[]).length)o.spotify=b.spGenres.slice(0,5);if((b.mbTags||[]).length)o.mb=b.mbTags;if(all)o.en=places(b).map(p=>p.s||p.g);return o});
   return AI_PROMPT(all)+'```json\n'+JSON.stringify({mi_discoteca:all?'reubicar':'clasificar',generos:nodes,bandas:bs})+'\n```\n';
 }
 function parseAssignBlocks(text){
@@ -414,9 +418,10 @@ async function fetchDisco(b,force){
     const prev=seen.get(key);
     if(!prev||(y&&y<prev.y))seen.set(key,{id:a.id,t:a.name,y,type,n:a.total_tracks||0,img:imgOf(a.images)});
   }
-  b.albums=[...seen.values()];
+  const oldMd={};for(const a of b.albums||[])if(a.md)oldMd[a.id]=a.md;
+  b.albums=[...seen.values()];for(const a of b.albums)if(oldMd[a.id])a.md=oldMd[a.id];
   if(!b.spGenres||!b.spGenres.length||!b.img){try{const ar=await sp('/artists/'+b.sid);b.spGenres=ar.genres||[];b.img=b.img||imgOf(ar.images)}catch(_){}}
-  b.fetchedAt=Date.now();touch();return true;
+  b.fetchedAt=Date.now();touch();if(b.mbid&&!b.mbDates)mbSync(b).then(ok=>{if(ok&&UI.view.k==='band'&&UI.view.id===b.id)render()}).catch(()=>{});return true;
 }
 
 /* ================= navegación ================= */
@@ -432,6 +437,7 @@ function go(v,fromHistory){
   UI.bgPick=Math.random();
   if(!fromHistory){try{const cur=history.state&&history.state.v;if(JSON.stringify(cur)!==JSON.stringify(v))history.pushState({v},'')}catch(_){}}
   if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];if(!fromHistory){b.lastOpened=Date.now();touch()}
+    if(b.sid&&b.fetchedAt&&!b.mbDates)mbSync(b).then(ok=>{if(ok&&UI.view.k==='band'&&UI.view.id===b.id)render()}).catch(()=>{});
     if(b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>30*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;say(spErr(e),true)})}}
   render();window.scrollTo(0,0);
 }
@@ -491,7 +497,7 @@ function vHome(){
   if(p){const pl=placeOf(p);h+=`<div class="pick">${p.img?`<img src="${esc(p.img)}" alt="">`:''}<div class="in"><span class="lbl">Redescubre · ${esc(ago(p.lastOpened))}</span><div class="divider">${esc(p.name)}</div><span class="hint">${esc(placeName(p)||'Sin clasificar')}</span><div class="btns"><button class="btn primary small" data-go="${J({k:'band',id:p.id})}">Abrir</button><button class="btn small" data-act="reroll">Otra</button></div></div></div>`}
   const gs=D.tree.genres.slice().sort(byName),un=unclassified().length;
   h+=`<div class="section"><h2>Géneros</h2>`+(gs.length||un?`<div class="list crate">${gs.map(g=>`<button class="row" data-go="${J({k:'genre',g:g.id})}"><span class="tabmark"></span><span class="name divider">${esc(g.name)}</span><span class="meta">${countIn(g.id)}</span></button>`).join('')}${un?`<button class="row" data-go="${J({k:'unclassified'})}"><span class="tabmark" style="opacity:.3"></span><span class="name divider" style="color:var(--muted)">Sin clasificar</span><span class="meta">${un}</span></button>`:''}</div>`:`<div class="empty">Crea tu primer género, por ejemplo <b>Metal</b>, y dentro sus subgéneros.</div>`)+`</div>`;
-  h+=`<div class="btns"><button class="btn primary" data-act="newGenre">+ Género</button><button class="btn" data-act="addBand">+ Banda</button><button class="btn" data-go="${J({k:'import'})}">Importar de Spotify</button><button class="btn" data-go="${J({k:'favs'})}"><span class="heart">♥</span> Favoritas</button><button class="btn" data-go="${J({k:'albums',rated:true})}"><span style="color:var(--star)">★</span> Valorados</button><button class="btn" data-go="${J({k:'albums',pend:true})}">Pendientes</button><button class="btn" data-go="${J({k:'albums',year:String(new Date().getFullYear())})}">Discos por año</button><button class="btn" data-go="${J({k:'albums',fmt:'any'})}">Discos que tengo</button><button class="btn" data-go="${J({k:'roulette'})}">Ruleta</button><button class="btn" data-go="${J({k:'forgotten'})}">Olvidadas</button><button class="btn" data-go="${J({k:'unclassified'})}">Clasificar con IA</button></div>`;
+  h+=`<div class="btns"><button class="btn primary" data-act="newGenre">+ Género</button><button class="btn" data-act="addBand">+ Banda</button><button class="btn" data-go="${J({k:'import'})}">Importar de Spotify</button><button class="btn" data-go="${J({k:'favs'})}"><span class="heart">♥</span> Favoritas</button><button class="btn" data-go="${J({k:'albums',rated:true})}"><span style="color:var(--star)">★</span> Valorados</button><button class="btn" data-go="${J({k:'albums',pend:true})}">Pendientes</button><button class="btn" data-go="${J({k:'albums',year:String(new Date().getFullYear())})}">Discos por año</button><button class="btn" data-go="${J({k:'albums',fmt:'any'})}">Discos que tengo</button><button class="btn" data-go="${J({k:'roulette'})}">Ruleta</button><button class="btn" data-go="${J({k:'today'})}">Hoy hace X años</button><button class="btn" data-go="${J({k:'forgotten'})}">Olvidadas</button><button class="btn" data-go="${J({k:'unclassified'})}">Clasificar con IA</button></div>`;
   if(UI.form)h+=formHtml();
   return h;
 }
@@ -512,6 +518,63 @@ function vGenre(){
 function subRows(g,list,ct){return `<div class="list crate">${list.slice().sort(byName).map(x=>{const f=findAny(x.id),sh=twins(x).length>1,kids=sharedChildren(x).length;return `<button class="row" data-go="${J({k:'sub',g:f?f.g.id:g.id,s:x.id,cg:g.id,ct:ct||[]})}"><span class="tabmark"></span><span class="name divider">${esc(x.name)}${kids||sh?`<span class="sub" style="font-family:var(--body);text-transform:none;letter-spacing:0">${[kids?`${kids} subgénero${kids===1?'':'s'}`:'',sh?'compartido':''].filter(Boolean).join(' · ')}</span>`:''}</span><span class="meta">${countIn(g.id,x.id)}</span></button>`}).join('')}</div>`}
 function selList(list){list.forEach(b=>{if(!b.img&&b.sid)UI.visible.add(b.id)});return `<div class="list">${list.map(b=>`<label class="row chk" style="cursor:pointer"><input type="checkbox" data-sel="${b.id}" ${UI.sel.has(b.id)?'checked':''}>${thumb(b.img)}<span class="name">${esc(b.name)}<span class="sub">${esc((b.spGenres||[]).slice(0,4).join(' · ')||'—')}</span></span>${b.sid?`<a class="btn small spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener" title="Ver ${esc(b.name)} en Spotify">Spotify ↗</a>`:''}${UI.view.k==='unclassified'?`<button class="btn small danger" data-act="delOne" data-id="${b.id}" title="Quitar de mi colección" aria-label="Quitar ${esc(b.name)} de mi colección">✕</button>`:''}</label>`).join('')}</div>`}
 async function importFollowed(prog){let url='/me/following?type=artist&limit=50',n=0,added=0;while(url&&n++<100){const r=await sp(url);for(const ar of r.artists.items)if(addArtist(ar).isNew)added++;prog&&prog(bands().length);url=r.artists.next}return added}
+/* ================= MusicBrainz: fechas originales y géneros (gratis, 1 petición por segundo) ================= */
+const MB='https://musicbrainz.org/ws/2';let mbQ=Promise.resolve(),mbDown=0;
+function mbWait(){const p=mbQ.then(()=>sleep(1150));mbQ=p.catch(()=>{});return p}
+async function mbGet(path,tries=0){
+  if(Date.now()<mbDown)throw new Error('mbdown');
+  await mbWait();
+  let r;try{r=await fetch(MB+path+(path.includes('?')?'&':'?')+'fmt=json',{headers:{Accept:'application/json'}})}catch(e){mbDown=Date.now()+10*60000;throw new Error('mbdown')}
+  if(r.status===404)return null;
+  if(r.status===503||r.status===429){if(tries<2){await sleep(3000*(tries+1));return mbGet(path,tries+1)}mbDown=Date.now()+5*60000;throw new Error('mbdown')}
+  if(!r.ok)throw new Error('MusicBrainz '+r.status);
+  return r.json();
+}
+const mbNorm=t=>norm(t).replace(/\s*[\(\[][^\)\]]*[\)\]]/g,'').replace(/\s+-\s+.*(remaster|deluxe|edition|version|anniversary|live|edición|reedición).*$/,'').replace(/[^a-z0-9\u00c0-\u024f]+/g,' ').trim();
+function mbMatchDates(b,rgs){
+  const idx=new Map();for(const g of rgs){const d=g['first-release-date'];if(!d)continue;const k=mbNorm(g.title);if(k&&(!idx.has(k)||d<idx.get(k)))idx.set(k,d)}
+  let n=0;for(const a of b.albums||[]){const k=mbNorm(a.t);let d=idx.get(k);
+    if(!d&&k.length>=6){for(const [kk,dd] of idx){if(kk.length>=6&&(kk.startsWith(k)||k.startsWith(kk))){d=dd;break}}}
+    if(d&&(!a.y||+d.slice(0,4)<=+a.y+1)){if(a.md!==d){a.md=d;n++}}}
+  return n}
+async function mbSync(b,force){
+  if(!b.sid||cfg.autoMB===false)return false;
+  if(!force&&b.mbAt&&Date.now()-b.mbAt<60*864e5&&(b.mbDates||!(b.albums||[]).length))return false;
+  if(!b.mbid){
+    const u=await mbGet('/url?resource='+encodeURIComponent('https://open.spotify.com/artist/'+b.sid)+'&inc=artist-rels');
+    const rel=u&&(u.relations||[]).find(r=>r.artist&&r.artist.id);
+    if(rel)b.mbid=rel.artist.id;
+    else{const q=await mbGet('/artist?query='+encodeURIComponent('artist:"'+b.name.replace(/"/g,'')+'"')+'&limit=5');
+      const same=((q&&q.artists)||[]).filter(x=>norm(x.name)===norm(b.name)&&(x.score||0)>=90);
+      if(same.length===1)b.mbid=same[0].id}
+    if(!b.mbid){b.mbAt=Date.now();b.mbTags=b.mbTags||[];touch();return false}
+  }
+  const ar=await mbGet('/artist/'+b.mbid+'?inc=release-groups+genres+tags&type=album|ep');
+  if(!ar){b.mbid='';b.mbAt=Date.now();touch();return false}
+  const gs=(ar.genres&&ar.genres.length?ar.genres:(ar.tags||[])).filter(t=>(t.count||0)>0).sort((x,y)=>(y.count||0)-(x.count||0)).slice(0,6).map(t=>t.name);
+  b.mbTags=gs;
+  let rgs=ar['release-groups']||[];
+  if(rgs.length>=25&&(b.albums||[]).length){const br=await mbGet('/release-group?artist='+b.mbid+'&type=album|ep&limit=100');if(br&&br['release-groups'])rgs=br['release-groups']}
+  if((b.albums||[]).length){mbMatchDates(b,rgs);b.mbDates=Date.now()}
+  b.mbAt=Date.now();touch();return true;
+}
+const MB_DAY=400,MB_RUN=40;let mbRunning=false;
+function mbNeed(b){return b.sid&&(!b.mbAt||((b.albums||[]).length&&!b.mbDates&&b.mbid))}
+function mbPick(){
+  for(const id of UI.visible){const b=D.bands[id];if(b&&mbNeed(b))return b}
+  if(UI.mbPrefer==='uncl'){const u=unclassified().find(mbNeed);if(u)return u}
+  const all=bands().filter(mbNeed);if(!all.length)return null;
+  return all.find(b=>(b.albums||[]).length)||all.find(b=>!places(b).length&&!b.parentId)||all[0];
+}
+async function mbLoader(max){
+  if(mbRunning||cfg.autoMB===false)return;mbRunning=true;
+  try{let day=LS.get('md_mb',{d:'',n:0});const today=new Date().toISOString().slice(0,10);if(day.d!==today)day={d:today,n:0};
+    let run=0;const cap=max||MB_RUN;
+    while(run<cap&&(max||day.n<MB_DAY)&&Date.now()>=mbDown){const b=mbPick();if(!b)break;
+      try{await mbSync(b,true)}catch(e){if(e.message==='mbdown')break;b.mbAt=Date.now()}
+      run++;day.n++;LS.set('md_mb',day);if(UI.mbProg){UI.mbProg.done++;const el=document.getElementById('mbprog');if(el)el.textContent=`Buscando… ${UI.mbProg.done} de ${UI.mbProg.total}`}}
+  }finally{mbRunning=false;if(UI.mbProg){UI.mbProg=null;UI.busy=null;render()}}
+}
 /* Fotos de bandas en segundo plano: pocas por sesión y con tope diario, para no gastar la cuota de Spotify. */
 const PH_DAY=150,PH_RUN=50,PH_GAP=2500;let phRunning=false;
 function phNeed(b){return b.sid&&!b.img&&(!b.imgTry||Date.now()-b.imgTry>30*864e5)}
@@ -581,7 +644,14 @@ function placeSelect(id,selG,selS,first){
 function vUnclassified(){
   const list=unclassified();
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Sin clasificar'}])+`<h1>Sin clasificar</h1>`;
-  h+=`<div class="panel"><div class="divider" style="font-size:20px">Clasificar con IA</div><span class="hint">1. Copia y pégaselo a Claude u otro asistente de IA: el texto ya lleva las instrucciones. “Sin clasificar” manda solo estas ${list.length}; “Toda la colección” manda también las ya colocadas, por si has creado géneros nuevos y quieres recolocar. 2. Pega aquí lo que te devuelva y pulsa Aplicar.</span><div class="btns"><button class="btn primary small" data-act="copyForClaude" ${list.length?'':'disabled'}>Copiar sin clasificar</button><button class="btn small" data-act="copyAllForClaude">Copiar toda la colección</button></div>${UI.claudeOut?`<textarea class="code" id="claudeout" readonly>${esc(UI.claudeOut)}</textarea>`:''}<form id="f_claude" class="panel" style="padding:0;border:0"><textarea class="code" id="f_claudein" placeholder="Pega aquí la respuesta de la IA"></textarea><div class="btns"><button class="btn small" type="submit">Aplicar clasificación</button></div></form></div>`;
+  const mbHave=list.filter(b=>(b.mbTags||[]).length).length,mbLeft=list.filter(b=>b.sid&&!b.mbAt).length;
+  h+=`<div class="panel"><div class="divider" style="font-size:20px">Clasificar con IA</div>
+  <ol class="hint" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:13.5px;color:var(--fg)">
+   <li>Pulsa <b>Copiar sin clasificar</b> (o <b>Copiar toda la colección</b> si has creado géneros nuevos y quieres recolocar). Se copia un texto que ya lleva las instrucciones para la IA.</li>
+   <li>Abre Claude, ChatGPT o cualquier otro asistente de IA, pega ese texto tal cual y envíalo.</li>
+   <li>Copia la respuesta entera de la IA, pégala en el recuadro de abajo y pulsa <b>Aplicar clasificación</b>. Si te responde en varios trozos, pégalos todos juntos.</li></ol>
+  <span class="hint">Pista para bandas poco conocidas: ${mbHave} de ${list.length} tienen ya géneros de MusicBrainz, que van incluidos en el texto.${mbLeft?` ${UI.mbProg?`<span id="mbprog">Buscando… ${UI.mbProg.done} de ${UI.mbProg.total}</span>`:`<button class="btn small" data-act="mbUncl">Buscar géneros de las ${mbLeft} que faltan</button> (1 por segundo; tarda unos ${Math.ceil(mbLeft*2.4/60)} min con la app abierta)`}`:''}</span>
+  <div class="btns"><button class="btn primary small" data-act="copyForClaude" ${list.length?'':'disabled'}>Copiar sin clasificar</button><button class="btn small" data-act="copyAllForClaude">Copiar toda la colección</button></div>${UI.claudeOut?`<textarea class="code" id="claudeout" readonly>${esc(UI.claudeOut)}</textarea>`:''}<form id="f_claude" class="panel" style="padding:0;border:0"><textarea class="code" id="f_claudein" placeholder="Pega aquí la respuesta de la IA"></textarea><div class="btns"><button class="btn small" type="submit">Aplicar clasificación</button></div></form></div>`;
   if(!list.length)return h+`<div class="empty">Todo clasificado.</div>`;
   if(!D.tree.genres.length)h+=`<div class="notice">Primero crea géneros y subgéneros en Inicio. Luego vuelve aquí para repartir las bandas.</div>`;
   const auto=autoMatches();
@@ -686,6 +756,19 @@ function roulettePool(v){const match=scopeMatch(v.place),src=v.src||'sel',out=[]
   for(const b of bands()){if(!match(b))continue;const PK=new Set(b.picked||[]),PD=new Set(b.pend||[]),HD=new Set(b.hidden||[]);
     for(const a of b.albums||[]){if(HD.has(a.id)||a.type==='single')continue;if(src==='sel'&&!PK.has(a.id))continue;if(src==='pend'&&!PD.has(a.id))continue;out.push({b,a})}}
   return out}
+function vToday(){
+  const now=new Date(),md=d=>d.slice(5,10),key=x=>`${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+  const all=[];for(const b of bands())for(const a of b.albums||[])if(a.md&&a.md.length===10&&a.type!=='single'&&!(b.hidden||[]).includes(a.id))all.push({b,a});
+  const days=[...Array(8)].map((_,i)=>{const d=new Date(now);d.setDate(d.getDate()+i);return d});
+  let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Hoy hace X años'}])+`<h1>Hoy hace X años</h1>`;
+  const withDates=bands().filter(b=>b.mbDates).length;
+  h+=`<span class="hint">Fechas originales de MusicBrainz. Por ahora hay fechas de ${withDates} banda${withDates===1?'':'s'}; se van completando solas al abrir bandas y en segundo plano.</span>`;
+  let any=false;
+  days.forEach((d,i)=>{const k=key(d),items=all.filter(x=>md(x.a.md)===k).sort((x,y)=>x.a.md.localeCompare(y.a.md));if(!items.length)return;any=true;
+    h+=`<div class="section"><h2>${i===0?'Hoy':i===1?'Mañana':d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</h2><div class="list">${items.map(x=>{const yrs=d.getFullYear()-+x.a.md.slice(0,4);return `<div class="row al">${x.a.img?`<img src="${esc(x.a.img)}" alt="" loading="lazy">`:''}<div class="name"><a class="at" href="https://open.spotify.com/album/${esc(x.a.id)}" target="_blank" rel="noopener">${esc(x.a.t)}</a><div><button class="yrb" data-go="${J({k:'band',id:x.b.id})}" style="font-family:var(--body);color:var(--fg)">${esc(x.b.name)}</button></div><span class="hint">${i===0?'Hoy hace':'Cumple'} ${yrs} año${yrs===1?'':'s'} · ${esc(new Date(x.a.md+'T12:00').toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'}))}</span></div></div>`}).join('')}</div></div>`});
+  if(!any)h+=`<div class="empty">Ningún disco de tu colección cumple años esta semana (de los que ya tienen fecha).</div>`;
+  return h;
+}
 function vRoulette(){
   const v=UI.view,[pg,ps]=(v.place||'|').split('|'),pool=roulettePool(v);
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Ruleta'}])+`<h1>Ruleta de discos</h1>`;
@@ -738,6 +821,7 @@ function vSettings(){
   h+=`</div>`;
   const ign=Object.entries(D.ignored||{}).sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'es'));
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Importación</div>
+  <label class="chk"><input type="checkbox" id="f_mb" ${cfg.autoMB===false?'':'checked'}> Buscar en MusicBrainz las fechas originales de los discos y los géneros de cada banda (gratis, sin gastar cuota de Spotify; ${bands().filter(b=>b.mbAt).length} de ${bands().length} bandas consultadas)</label>
   <label class="chk"><input type="checkbox" id="f_photos" ${cfg.autoPhotos===false?'':'checked'}> Cargar poco a poco las fotos de las bandas que faltan (${bands().filter(b=>b.sid&&!b.img).length} sin foto; como mucho ${PH_DAY} al día)</label>
   <label class="chk"><input type="checkbox" id="f_auto" ${cfg.autoImport===false?'':'checked'}> Al abrir la web, añadir a Sin clasificar los grupos nuevos que sigas en Spotify (como mucho una vez al día)</label>
   <span class="hint">Bandas excluidas: las que has quitado de tu colección. No vuelven a entrar al importar; si las añades tú con + Banda, sí.</span>
@@ -837,6 +921,7 @@ app.addEventListener('click',async e=>{
       touch();
       if(pg){UI.form=null;render();fetchDisco(b).then(render).catch(()=>{})}else go({k:'band',id:b.id});
       break}
+    case'mbUncl':{const left=unclassified().filter(b=>b.sid&&!b.mbAt).length;UI.mbPrefer='uncl';UI.mbProg={done:0,total:left};render();mbLoader(left).then(()=>{UI.mbPrefer=null;render()});break}
     case'pend':{const b=D.bands[a.dataset.b||v.id],id=a.dataset.a,set=new Set(b.pend||[]);set.has(id)?set.delete(id):set.add(id);b.pend=[...set];touch();render();break}
     case'fmtOpen':{const k=(a.dataset.b||v.id)+'|'+a.dataset.a;UI.fmtOpen=UI.fmtOpen===k?null:k;render();break}
     case'fmt':{const b=D.bands[a.dataset.b||v.id],id=a.dataset.a,f=a.dataset.f;b.fmt=b.fmt||{};const cur=new Set(b.fmt[id]||[]);cur.has(f)?cur.delete(f):cur.add(f);if(cur.size)b.fmt[id]=FMTS.filter(x=>cur.has(x));else delete b.fmt[id];touch();render();break}
@@ -897,6 +982,7 @@ app.addEventListener('click',async e=>{
 app.addEventListener('change',e=>{
   if(e.target.dataset.sel){e.target.checked?UI.sel.add(e.target.dataset.sel):UI.sel.delete(e.target.dataset.sel);const m=document.querySelector('.bar .meta');if(m)m.textContent=UI.sel.size+' marcadas';document.querySelectorAll('[data-act="moveSel"],[data-act="addSel"],[data-act="delSel"]').forEach(btn=>btn.disabled=!UI.sel.size)}
   if(e.target.dataset.pl){const p=UI.playlists.find(x=>x.id===e.target.dataset.pl);if(p)p.on=e.target.checked}
+  if(e.target.id==='f_mb'){cfg.autoMB=e.target.checked;LS.set('md_cfg',cfg);if(cfg.autoMB)mbLoader();return}
   if(e.target.id==='f_photos'){cfg.autoPhotos=e.target.checked;LS.set('md_cfg',cfg);if(cfg.autoPhotos)photoLoader();return}
   if(e.target.id==='f_auto'){cfg.autoImport=e.target.checked;LS.set('md_cfg',cfg);return}
   if(e.target.id==='f_favplace'){UI.view={...UI.view,place:e.target.value};render();return}
@@ -916,9 +1002,9 @@ function paintBg(){const el=document.getElementById('bg');if(!el)return;const b=
 function render(){try{renderInner();paintBg()}catch(e){showFatal(e)}}
 function renderInner(){
   UI.visible=new Set();
-  const keep={};document.querySelectorAll('#frm input,#frm select').forEach(el=>{if(el.id)keep[el.id]=el.value});
+  const keep={};document.querySelectorAll('#frm input,#frm select,#f_claudein').forEach(el=>{if(el.id)keep[el.id]=el.value});
   const v=UI.view.k;
-  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='rated'||v==='albums'?vAlbums():v==='roulette'?vRoulette():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
+  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='rated'||v==='albums'?vAlbums():v==='roulette'?vRoulette():v==='today'?vToday():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
   let notes='';
   if(cfg.clientId&&!tok&&v!=='settings')notes+=`<div class="notice">Spotify no está conectado. <button class="btn small spot" data-act="login">Conectar</button></div>`;
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
@@ -934,7 +1020,7 @@ window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(e
 window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(_){}
 window.addEventListener('popstate',e=>{const v=e.state&&e.state.v;go(v&&v.k?v:{k:'home'},true)});
-(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,8000);setInterval(photoLoader,2*3600e3);})();
+(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,8000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setInterval(()=>mbLoader(),3600e3);})();
 })();
 </script>
 </body>
