@@ -362,12 +362,13 @@ async function bgGate(){
   for(;;){if(!tok||Date.now()<spBlocked||Date.now()<bgPause)return false;
     const now=Date.now(),w=Math.max(lastFg+BG_QUIET-now,lastBg+BG_GAP-now,spPending?1500:0);
     if(w<=0){lastBg=now;return true}await sleep(Math.min(w,5000))}}
+function spCount(bg){const today=new Date().toISOString().slice(0,10);let c=LS.get('md_spc',{d:today,n:0,bg:0});if(c.d!==today)c={d:today,n:0,bg:0};c.n++;if(bg)c.bg++;LS.set('md_spc',c)}
 async function sp(path,tries=0,bg=false){
   if(Date.now()<spBlocked)throw new Error('ratelimit');
   if(!bg)lastFg=Date.now();
   spPending++;try{await spWait()}finally{spPending--}
   const url=path.startsWith('http')?path:'https://api.spotify.com/v1'+path;
-  const r=await fetch(url,{headers:{Authorization:'Bearer '+await access()}});
+  spCount(bg);const r=await fetch(url,{headers:{Authorization:'Bearer '+await access()}});
   if(r.status===401&&tries<1){tok.exp=0;return sp(path,tries+1,bg)}
   if(r.status===429){await on429(r);throw new Error('ratelimit')}
   if(!r.ok){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('Spotify '+r.status+(m?': '+m:''))}
@@ -376,7 +377,7 @@ async function sp(path,tries=0,bg=false){
 async function spPost(path,body,tries=0){
   if(Date.now()<spBlocked)throw new Error('ratelimit');
   await spWait();
-  const r=await fetch('https://api.spotify.com/v1'+path,{method:'POST',headers:{Authorization:'Bearer '+await access(),'Content-Type':'application/json'},body:JSON.stringify(body)});
+  spCount(false);const r=await fetch('https://api.spotify.com/v1'+path,{method:'POST',headers:{Authorization:'Bearer '+await access(),'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(r.status===401&&tries<1){tok.exp=0;return spPost(path,body,tries+1)}
   if(r.status===403){let m='';try{m=(await r.json()).error.message}catch(_){}throw new Error('scope:'+m)}
   if(r.status===429){await on429(r);throw new Error('ratelimit')}
@@ -682,7 +683,7 @@ function phPaint(b){
     const cb=row.querySelector('input[type=checkbox]');cb?cb.after(im):row.prepend(im)});
 }
 async function photoLoader(){
-  if(phRunning||!tok||cfg.autoPhotos===false)return;phRunning=true;
+  if(phRunning||!tok||cfg.autoPhotos!==true)return;phRunning=true;
   try{let day=LS.get('md_ph',{d:'',n:0});const today=new Date().toISOString().slice(0,10);if(day.d!==today)day={d:today,n:0};
     let run=0;
     while(run<PH_RUN&&day.n<PH_DAY){
@@ -948,7 +949,7 @@ function vImport(){
 }
 function vSettings(){
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Ajustes'}])+`<h1>Ajustes</h1>`;
-  h+=`<div class="panel"><div class="divider" style="font-size:20px">Spotify</div>${tok?`<span>Conectado.</span><div class="btns"><button class="btn small" data-act="logout">Desconectar</button></div>`:`<div class="btns"><button class="btn spot" data-act="login">Conectar Spotify</button></div>`}
+  h+=`<div class="panel"><div class="divider" style="font-size:20px">Spotify</div>${(()=>{const c=LS.get('md_spc',null),today=new Date().toISOString().slice(0,10);const n=c&&c.d===today?c:{n:0,bg:0};return `<span class="hint">Peticiones a Spotify hoy desde este dispositivo: <b>${n.n}</b>${n.bg?` (${n.bg} en segundo plano)`:''}.</span>`})()}${tok?`<span>Conectado.</span><div class="btns"><button class="btn small" data-act="logout">Desconectar</button></div>`:`<div class="btns"><button class="btn spot" data-act="login">Conectar Spotify</button></div>`}
   <span class="hint">Redirect URI de esta página: <code>${esc(REDIRECT)}</code></span>
   <form id="f_cidform" class="btns"><input type="text" id="f_cid" value="${esc(cfg.clientId)}" placeholder="Client ID" style="flex:1;min-width:200px"><button class="btn small" type="submit">Guardar Client ID</button></form></div>`;
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Sincronizar móvil y PC</div>`;
@@ -967,7 +968,7 @@ function vSettings(){
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Importación</div>
   <label class="chk"><input type="checkbox" id="f_news" ${cfg.autoNews===false?'':'checked'}> Avisarme de discos nuevos de mis bandas favoritas (revisa unas pocas cada día)</label>
   <label class="chk"><input type="checkbox" id="f_mb" ${cfg.autoMB===false?'':'checked'}> Buscar en MusicBrainz las fechas originales de los discos y los géneros de cada banda (gratis, sin gastar cuota de Spotify; ${bands().filter(b=>b.mbAt).length} de ${bands().length} bandas consultadas)</label>
-  <label class="chk"><input type="checkbox" id="f_photos" ${cfg.autoPhotos===false?'':'checked'}> Cargar poco a poco las fotos de las bandas que faltan (${bands().filter(b=>b.sid&&!b.img).length} sin foto; como mucho ${PH_DAY} al día)</label>
+  <label class="chk"><input type="checkbox" id="f_photos" ${cfg.autoPhotos===true?'checked':''}> Cargar en segundo plano las fotos de las bandas que faltan (gasta mucha cuota de Spotify; mejor dejarlo apagado) (${bands().filter(b=>b.sid&&!b.img).length} sin foto; como mucho ${PH_DAY} al día)</label>
   <label class="chk"><input type="checkbox" id="f_auto" ${cfg.autoImport===false?'':'checked'}> Al abrir la web, añadir a Sin clasificar los grupos nuevos que sigas en Spotify (como mucho una vez al día)</label>
   <span class="hint">Bandas excluidas: las que has quitado de tu colección. No vuelven a entrar al importar; si las añades tú con + Banda, sí.</span>
   ${ign.length?`<details><summary>${ign.length} banda${ign.length===1?'':'s'} excluida${ign.length===1?'':'s'}</summary><div class="list" style="margin-top:8px">${ign.map(([sid,name])=>`<div class="row"><span class="name">${esc(name)}</span><a class="btn small spot" href="https://open.spotify.com/artist/${esc(sid)}" target="_blank" rel="noopener">Spotify ↗</a><button class="btn small" data-act="unignore" data-sid="${esc(sid)}">Permitir de nuevo</button></div>`).join('')}</div><div class="btns" style="margin-top:8px"><button class="btn small" data-act="unignoreAll">Permitir todas de nuevo</button></div></details>`:'<span class="hint">Ninguna todavía.</span>'}</div>`;
