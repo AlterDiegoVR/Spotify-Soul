@@ -89,6 +89,10 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--tab);padding:2px 
 .bar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.15)}
 .bar select{flex:1;min-width:160px}
 progress{width:100%}
+.tut p{margin:0;line-height:1.55}
+.tl{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;line-height:1.5}
+.tut a{color:var(--accent)}
+.tut code{display:inline-block;max-width:100%}
 .pill{font:inherit;font-size:12px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer;white-space:nowrap}
 .pill.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .pill.pend.on{background:#f0a23a;border-color:#f0a23a;color:#1a1004}
@@ -101,6 +105,7 @@ progress{width:100%}
 .btn.favon{border-color:var(--heart);color:var(--heart)}
 #bg{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(1100px 620px at 8% -8%,rgba(30,215,96,.30),transparent 62%),radial-gradient(900px 520px at 105% 12%,rgba(30,215,96,.12),transparent 60%),radial-gradient(800px 600px at 50% 120%,rgba(30,215,96,.08),transparent 60%),var(--bg);overflow:hidden}
 #bg .cv{position:absolute;inset:-24px;background-size:cover;background-position:center;filter:blur(7px) saturate(1.1);transform:scale(1.04);opacity:0;transition:opacity .6s ease}
+@media (max-width:700px){#bg .cv{inset:0 0 auto 0;height:min(100vw,62vh);background-position:center top;filter:blur(1.5px) saturate(1.05);transform:none}#bg .sh{background:linear-gradient(180deg,rgba(8,10,9,.12) 0%,rgba(8,10,9,.40) min(55vw,34vh),rgba(8,10,9,.92) min(100vw,62vh),var(--bg) min(112vw,70vh))!important}}
 #bg.on .cv{opacity:.9}
 #bg .sh{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,10,9,.30) 0%,rgba(8,10,9,.55) 45%,rgba(8,10,9,.78) 100%);opacity:0;transition:opacity .6s ease}
 #bg.on .sh{opacity:1}
@@ -323,7 +328,7 @@ async function handleCallback(){
   if(q.get('error')){history.replaceState(null,'',REDIRECT);say('Spotify no dio permiso: '+q.get('error'),true);return}
   const code=q.get('code');if(!code)return;
   history.replaceState(null,'',REDIRECT);
-  try{await tokenReq({grant_type:'authorization_code',code,redirect_uri:REDIRECT,code_verifier:LS.get('md_verifier','')});LS.del('md_verifier');say('Conectado con Spotify.')}
+  try{await tokenReq({grant_type:'authorization_code',code,redirect_uri:REDIRECT,code_verifier:LS.get('md_verifier','')});LS.del('md_verifier');say('Conectado con Spotify.');if(!cfg.tutDone)UI.view={k:'tutorial',step:2}}
   catch(e){say('No se pudo conectar con Spotify: '+e.message,true)}
 }
 async function access(){
@@ -426,7 +431,7 @@ async function fetchDisco(b,force){
     const y=(a.release_date||'').slice(0,4),type=a.album_type||'album';
     const key=type+'|'+norm(a.name).replace(/\s*[\(\[].*?(deluxe|remaster|edition|version|expanded|anniversary|edición|reedición).*?[\)\]]/g,'').replace(/\s*-\s*.*(deluxe|remaster|edition|version).*$/,'').trim();
     const prev=seen.get(key);
-    if(!prev||(y&&y<prev.y))seen.set(key,{id:a.id,t:a.name,y,type,n:a.total_tracks||0,img:imgOf(a.images)});
+    if(!prev||(y&&y<prev.y))seen.set(key,{id:a.id,t:a.name,y,type,n:a.total_tracks||0,img:imgOf(a.images),imgL:((a.images||[]).slice().sort((p,q)=>(q.width||0)-(p.width||0))[0]||{}).url||''});
   }
   const oldMd={};for(const a of b.albums||[])if(a.md)oldMd[a.id]=a.md;
   b.albums=[...seen.values()];for(const a of b.albums)if(oldMd[a.id])a.md=oldMd[a.id];
@@ -486,16 +491,51 @@ function bandRow(b,showPath){
   const meta=showPath?((placeName(b)||'sin clasificar')+(places(b).length>1?` +${places(b).length-1}`:'')):(b.fetchedAt?(pk?`${pk} de ${n} discos`:`${n} disco${n===1?'':'s'}`):'')+(rel?` · ${rel} rel.`:'');
   return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}</span><span class="meta">${esc(meta)}</span></button>`;
 }
-function vSetup(){
-  return `<h1>Primera configuración</h1>
-  <div class="panel"><div class="divider" style="font-size:20px">1 · Conectar con Spotify</div>
-  <span class="hint">En <b>developer.spotify.com/dashboard</b> crea una app (marca “Web API”) y añade esta dirección exacta como <b>Redirect URI</b>:</span>
-  <code id="ru">${esc(REDIRECT)}</code>
-  <form id="f_setup" class="panel" style="padding:0;border:0"><label>Client ID de tu app de Spotify<input type="text" id="f_cid" value="${esc(cfg.clientId)}" autocomplete="off" required></label>
-  <div class="btns"><button class="btn primary" type="submit">Guardar y conectar</button></div></form></div>
-  <div class="panel"><div class="divider" style="font-size:20px">¿Ya lo usas en otro dispositivo?</div><span class="hint">Pega el código que aparece en Ajustes del otro dispositivo y tendrás aquí la misma colección.</span>
-  <form id="f_code" class="btns"><input type="text" id="f_codein" placeholder="Código" autocomplete="off" style="flex:1;min-width:200px"><button class="btn small" type="submit">Usar código</button></form></div>`;
-}
+const TUT=[
+ ['Bienvenido a Spotify Soul',()=>`<p>Ordena tu música de Spotify como tus carpetas de siempre: <b>Género / Subgénero / Banda / Año – Disco</b>. Tú decides el árbol; Spotify pone la música.</p>
+  <ul class="tl"><li><b>Importa</b> los artistas que sigues, tus álbumes guardados o tus listas.</li><li><b>Clasifica</b> cada banda en tus géneros, a mano o con ayuda de una IA.</li><li><b>Marca</b> discos: tu selección, estrellas, pendientes y formato (LP, CD…).</li><li><b>Redescubre</b>: ruleta de discos, bandas olvidadas, novedades y “hoy hace X años”.</li></ul>
+  <p class="hint">Necesitas una cuenta de <b>Spotify Premium</b> (Spotify la exige para usar su API) y unos 10 minutos.</p>`],
+ ['Conecta tu Spotify',()=>`<p>Cada persona usa su propia “app” de Spotify. Es gratis y se crea en un momento:</p>
+  <ol class="tl"><li>Entra en <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> con tu cuenta de Spotify y acepta las condiciones.</li>
+  <li>Pulsa <b>Create app</b>. Nombre y descripción, los que quieras.</li>
+  <li>En <b>Redirect URIs</b> pega exactamente esta dirección:<div class="btns" style="margin-top:6px"><code>${esc(REDIRECT)}</code><button class="btn small" data-act="copyText" data-t="${esc(REDIRECT)}">Copiar</button></div></li>
+  <li>Marca solo <b>Web API</b> (no Android ni iOS) y guarda.</li>
+  <li>Abre la app que has creado, copia su <b>Client ID</b> y pégalo aquí:</li></ol>
+  <form id="f_setup" class="btns"><input type="text" id="f_cid" value="${esc(cfg.clientId)}" placeholder="Client ID" autocomplete="off" style="flex:1;min-width:200px" required><button class="btn primary" type="submit">${tok?'Guardar':'Guardar y conectar'}</button></form>
+  ${tok?'<p class="hint">Ya estás conectado.</p>':'<p class="hint">Spotify te pedirá permiso y volverás aquí.</p>'}
+  <div class="panel" style="margin-top:10px"><b>¿Ya usas Spotify Soul en otro dispositivo?</b><span class="hint">Pega el código que aparece en Ajustes → Sincronizar del otro dispositivo y tendrás aquí la misma colección.</span><form id="f_code" class="btns"><input type="text" id="f_codein" placeholder="Código" autocomplete="off" style="flex:1;min-width:200px"><button class="btn small" type="submit">Usar código</button></form></div>`],
+ ['Importa tu música',()=>`<p>En <b>Importar de Spotify</b> tienes tres opciones. Todo lo que entra va a <b>Sin clasificar</b> y no se duplica nada.</p>
+  <ul class="tl"><li><b>Artistas que sigues</b>: la mejor forma de empezar. Además, cada día se añaden solos los que empieces a seguir.</li><li><b>Álbumes guardados</b>: los artistas de tus discos guardados.</li><li><b>Tus listas</b>: elige cuáles. <b>Ojo:</b> importar muchas listas largas de golpe gasta la cuota de Spotify y te bloquea unas horas. Mejor pocas cada vez.</li></ul>
+  <p class="hint">Si quitas una banda de tu colección, no vuelve a entrar al importar.</p>
+  <div class="btns"><button class="btn small" data-go="${J({k:'import'})}">Ir a Importar</button></div>`],
+ ['Crea tu árbol de géneros',()=>`<ul class="tl"><li>En el inicio, <b>+ Género</b> (por ejemplo METAL). Dentro de él, <b>+ Subgénero</b> (HEAVY METAL), y dentro, más subgéneros sin límite (NWOBHM).</li>
+  <li>Si dos subgéneros se llaman igual en ramas distintas, son <b>la misma carpeta compartida</b> (por ejemplo SOUTHERN ROCK dentro de ROCK y de COUNTRY).</li>
+  <li>Una banda puede estar en <b>varias ramas</b> a la vez.</li>
+  <li>Dentro de cada banda puedes colgar <b>relacionados</b>: discos en solitario, la banda que formaron después, nombres anteriores…</li></ul>`],
+ ['Clasifica tus bandas',()=>`<p>En <b>Sin clasificar</b> tienes dos formas:</p>
+  <ul class="tl"><li><b>A mano</b>: marca varias bandas, elige una o varias ramas con <b>+ Rama</b> y pulsa <b>Colocar</b>. Con <b>Spotify ↗</b> ves quién es cada una, y con ✕ la quitas.</li>
+  <li><b>Con IA</b> (Claude, ChatGPT u otra): pulsa <b>Copiar sin clasificar</b>, pégalo en la IA y envíalo; copia su respuesta, pégala en el recuadro y pulsa <b>Aplicar clasificación</b>. El texto ya lleva las instrucciones, no tienes que explicarle nada.</li></ul>
+  <div class="btns"><button class="btn small" data-go="${J({k:'unclassified'})}">Ir a Sin clasificar</button></div>`],
+ ['Usa la app en varios dispositivos',()=>`<p class="hint">Opcional. Tu colección se guarda en este dispositivo; para tenerla también en el móvil o en otro ordenador, se guarda en un Gist privado de tu cuenta de GitHub:</p>
+  <ol class="tl"><li>En github.com, con tu sesión iniciada: tu foto → <b>Settings</b> → <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Tokens (classic)</b> → <b>Generate new token (classic)</b>.</li>
+  <li>Expiration: <b>No expiration</b>. Marca solo la casilla <b>gist</b>. Genera y copia el token.</li>
+  <li>Aquí, en <b>Ajustes → Sincronizar</b>, pégalo y pulsa <b>Activar</b>.</li>
+  <li>Pulsa <b>Mostrar código para otro dispositivo</b> y pégalo en el otro (en su primera pantalla o en Ajustes).</li></ol>
+  <p class="hint">Los cambios de cada dispositivo se mezclan banda a banda, así que puedes usar los dos.</p>
+  <div class="btns"><button class="btn small" data-go="${J({k:'settings'})}">Ir a Ajustes</button></div>`],
+ ['El día a día',()=>`<ul class="tl"><li>En cada banda: <b>✓</b> marca los discos de tu selección (al entrar solo verás esos), <b>★</b> los valora, <b>Pendiente</b> los guarda para escucharlos a fondo y <b>Formato</b> indica si los tienes en LP, CD, casete o digital. <b>♡ Favorita</b> las pone arriba en cada rama.</li>
+  <li>En el inicio y en cada rama: <b>Discos</b> (filtra por año, estrellas, pendientes o formato), <b>Ruleta</b>, <b>Hoy hace X años</b> y <b>Crear lista en Spotify</b>.</li>
+  <li>Las fotos, las fechas originales de los discos (de MusicBrainz) y las novedades de tus favoritas se van cargando solas poco a poco.</li>
+  <li>Instálala como app: en Chrome, menú ⋮ → <b>Instalar aplicación</b>.</li></ul>
+  <p class="hint">Puedes volver a ver este tutorial desde Ajustes o con el botón “?”.</p>`]];
+function vTutorial(setup){
+  const v=UI.view,last=setup?1:TUT.length-1,i=Math.min(setup?(UI.tStep||0):(v.step||0),last);
+  const [title,body]=TUT[i];
+  const dots=TUT.slice(0,last+1).map((_,k)=>`<span style="width:8px;height:8px;border-radius:50%;background:${k===i?'var(--accent)':'var(--line)'};display:inline-block"></span>`).join('');
+  return `<div class="panel tut"><div class="btns" style="justify-content:space-between"><span class="hint">Paso ${i+1} de ${last+1}</span><span class="btns" style="gap:5px">${dots}</span></div><h1 style="font-size:clamp(26px,7vw,36px)">${esc(title)}</h1>${body()}
+  <div class="btns" style="justify-content:space-between;margin-top:6px">${i>0?`<button class="btn small" data-act="${setup?'sstep':'tstep'}" data-n="${i-1}">Anterior</button>`:'<span></span>'}${i<last?`<button class="btn primary" data-act="${setup?'sstep':'tstep'}" data-n="${i+1}">Siguiente</button>`:setup?'':`<button class="btn primary" data-act="tdone">Empezar</button>`}</div>
+  ${setup||i===last?'':'<div class="btns" style="justify-content:center"><button class="btn small" data-act="tdone" style="background:none;border:0;color:var(--muted)">Saltar tutorial</button></div>'}</div>`}
+function vSetup(){return vTutorial(true)}
 function weeklyPicks(){
   let st=LS.get('md_remind',null);const week=7*864e5;
   if(st&&Date.now()-st.at<week)return st.dismissed?null:st.ids.filter(id=>D.bands[id]);
@@ -904,6 +944,10 @@ function vSettings(){
   <label class="chk"><input type="checkbox" id="f_auto" ${cfg.autoImport===false?'':'checked'}> Al abrir la web, añadir a Sin clasificar los grupos nuevos que sigas en Spotify (como mucho una vez al día)</label>
   <span class="hint">Bandas excluidas: las que has quitado de tu colección. No vuelven a entrar al importar; si las añades tú con + Banda, sí.</span>
   ${ign.length?`<details><summary>${ign.length} banda${ign.length===1?'':'s'} excluida${ign.length===1?'':'s'}</summary><div class="list" style="margin-top:8px">${ign.map(([sid,name])=>`<div class="row"><span class="name">${esc(name)}</span><a class="btn small spot" href="https://open.spotify.com/artist/${esc(sid)}" target="_blank" rel="noopener">Spotify ↗</a><button class="btn small" data-act="unignore" data-sid="${esc(sid)}">Permitir de nuevo</button></div>`).join('')}</div><div class="btns" style="margin-top:8px"><button class="btn small" data-act="unignoreAll">Permitir todas de nuevo</button></div></details>`:'<span class="hint">Ninguna todavía.</span>'}</div>`;
+  h+=`<div class="panel"><div class="divider" style="font-size:20px">Copia de seguridad</div><span class="hint">Descarga toda tu colección en un archivo (géneros, bandas, discos, marcas y valoraciones). Guárdalo donde quieras; con él puedes recuperarla en cualquier dispositivo.</span>
+  <div class="btns"><button class="btn small" data-act="backup">Descargar copia</button><label class="btn small" style="flex-direction:row;color:var(--fg)">Restaurar desde archivo<input type="file" id="f_restore" accept=".json,application/json" hidden></label></div>
+  ${UI.restore?`<div class="notice err">Vas a sustituir tu colección actual (${bands().length} bandas) por la de la copia (${Object.keys(UI.restore.bands||{}).length} bandas)${cfg.ghToken?' en todos tus dispositivos':''}. <div class="btns" style="margin-top:6px"><button class="btn small danger" data-act="restoreYes">Sí, restaurar</button><button class="btn small" data-act="restoreNo">Cancelar</button></div></div>`:''}</div>`;
+  h+=`<div class="panel"><div class="divider" style="font-size:20px">Ayuda</div><div class="btns"><button class="btn small" data-act="tutorial">Ver el tutorial de inicio</button></div></div>`;
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Mantenimiento</div><div class="btns"><button class="btn" data-act="fetchAll" ${UI.busy||!tok?'disabled':''}>Cargar todas las discografías</button></div>${UI.busy?`<div class="notice">${esc(UI.busy)}</div>`:''}<span class="hint">Si no, cada discografía se carga al abrir la banda y se refresca cada 30 días.</span></div>`;
   return h;
 }
@@ -939,7 +983,7 @@ function formHtml(){
 const confirmHtml=()=>`<div class="panel"><div>${esc(UI.confirm.msg)}</div><div class="btns"><button class="btn danger" data-act="confirmYes">Sí, borrar</button><button class="btn" data-act="cancel">Cancelar</button></div></div>`;
 async function submitForm(id){
   const val=x=>(document.getElementById(x)?.value??'').trim();
-  if(id==='f_setup'||id==='f_cidform'){cfg.clientId=val('f_cid');LS.set('md_cfg',cfg);if(id==='f_setup'&&cfg.clientId)login();else{say('Client ID guardado.');}return}
+  if(id==='f_setup'||id==='f_cidform'){cfg.clientId=val('f_cid');LS.set('md_cfg',cfg);if(id==='f_setup'&&cfg.clientId&&!tok)login();else{say('Client ID guardado.');}return}
   if(id==='f_sync'){cfg.ghToken=val('f_gh');cfg.gistId='';LS.set('md_cfg',cfg);if(!cfg.ghToken)return;await pushRemote();if(cfg.gistId){UI.showCode=true;say('Sincronización activada. Ahora copia el código y pégalo en el otro dispositivo.')}else{cfg.ghToken='';LS.set('md_cfg',cfg);say('No se pudo crear el Gist. Revisa que el token tenga permiso de Gists (lectura y escritura).',true)}render();return}
   if(id==='f_code'){await applyCode(val('f_codein'));return}
   if(id==='f_pl'){makePlaylist(val('f_plname'));return}
@@ -1004,6 +1048,14 @@ app.addEventListener('click',async e=>{
     case'newsSeen':(D.news||[]).forEach(n=>n.seen=true);touch();render();break;
     case'remindOff':{const st=LS.get('md_remind',null);if(st){st.dismissed=true;LS.set('md_remind',st)}render();break}
     case'plOpt':{const k=a.dataset.k,val=a.dataset.v;const nv={...v,[k]:k==='min'?+val:val};const nm=document.getElementById('f_plname');if(nm)nv.name=nm.value;UI.view=nv;render();break}
+    case'backup':{const blob=new Blob([JSON.stringify(D)],{type:'application/json'});const url=URL.createObjectURL(blob);const el=document.createElement('a');el.href=url;el.download='spotify-soul-copia-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(el);el.click();el.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);say('Copia descargada.');break}
+    case'restoreYes':{D=UI.restore;UI.restore=null;fixTree();if(cfg.ghToken)LS.set('md_force',1);LS.del('md_base');touch();say('Colección restaurada desde la copia.');go({k:'home'});break}
+    case'restoreNo':UI.restore=null;render();break;
+    case'sstep':UI.tStep=+a.dataset.n;render();window.scrollTo(0,0);break;
+    case'tutorial':go({k:'tutorial',step:0});break;
+    case'tstep':{const n=+a.dataset.n;if(n>=TUT.length){cfg.tutDone=true;LS.set('md_cfg',cfg);go({k:'home'})}else{UI.view={...UI.view,step:n};render();window.scrollTo(0,0)}break}
+    case'tdone':cfg.tutDone=true;LS.set('md_cfg',cfg);go({k:'home'});break;
+    case'copyText':{try{await navigator.clipboard.writeText(a.dataset.t);say('Copiado.')}catch(_){say('Mantén pulsado el texto para copiarlo.')}break}
     case'pend':{const b=D.bands[a.dataset.b||v.id],id=a.dataset.a,set=new Set(b.pend||[]);set.has(id)?set.delete(id):set.add(id);b.pend=[...set];touch();render();break}
     case'fmtOpen':{const k=(a.dataset.b||v.id)+'|'+a.dataset.a;UI.fmtOpen=UI.fmtOpen===k?null:k;render();break}
     case'fmt':{const b=D.bands[a.dataset.b||v.id],id=a.dataset.a,f=a.dataset.f;b.fmt=b.fmt||{};const cur=new Set(b.fmt[id]||[]);cur.has(f)?cur.delete(f):cur.add(f);if(cur.size)b.fmt[id]=FMTS.filter(x=>cur.has(x));else delete b.fmt[id];touch();render();break}
@@ -1064,6 +1116,7 @@ app.addEventListener('click',async e=>{
 app.addEventListener('change',e=>{
   if(e.target.dataset.sel){e.target.checked?UI.sel.add(e.target.dataset.sel):UI.sel.delete(e.target.dataset.sel);const m=document.querySelector('.bar .meta');if(m)m.textContent=UI.sel.size+' marcadas';document.querySelectorAll('[data-act="moveSel"],[data-act="addSel"],[data-act="delSel"]').forEach(btn=>btn.disabled=!UI.sel.size)}
   if(e.target.dataset.pl){const p=UI.playlists.find(x=>x.id===e.target.dataset.pl);if(p)p.on=e.target.checked}
+  if(e.target.id==='f_restore'){const f=e.target.files&&e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{try{const o=JSON.parse(fr.result);if(!o||!o.bands||!o.tree)throw 0;UI.restore=o;render()}catch(_){say('Ese archivo no es una copia de Spotify Soul.',true)}};fr.readAsText(f);e.target.value='';return}
   if(e.target.id==='f_news'){cfg.autoNews=e.target.checked;LS.set('md_cfg',cfg);return}
   if(e.target.id==='f_mb'){cfg.autoMB=e.target.checked;LS.set('md_cfg',cfg);if(cfg.autoMB)mbLoader();return}
   if(e.target.id==='f_photos'){cfg.autoPhotos=e.target.checked;LS.set('md_cfg',cfg);if(cfg.autoPhotos)photoLoader();return}
@@ -1079,7 +1132,7 @@ app.addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;const
 
 /* ================= render ================= */
 function renderSync(){const s=document.getElementById('syncst');if(s){s.textContent=UI.syncState;s.title=UI.syncErr||'';s.classList.toggle('bad',UI.syncState==='Sin sincronizar')}}
-function bandCover(b){const al=(b.albums||[]).filter(a=>a.img&&!(b.hidden||[]).includes(a.id)),pk=new Set(b.picked||[]),mine=al.filter(a=>pk.has(a.id)),pool=mine.length?mine:al.filter(a=>a.type!=='single').length?al.filter(a=>a.type!=='single'):al;return pool.length?pool[Math.floor((UI.bgPick||0)*pool.length)%pool.length].img:(b.img||'')}
+function bandCover(b){const al=(b.albums||[]).filter(a=>a.img&&!(b.hidden||[]).includes(a.id)),pk=new Set(b.picked||[]),mine=al.filter(a=>pk.has(a.id)),pool=mine.length?mine:al.filter(a=>a.type!=='single').length?al.filter(a=>a.type!=='single'):al;if(!pool.length)return b.imgL||b.img||'';const a=pool[Math.floor((UI.bgPick||0)*pool.length)%pool.length];return a.imgL||a.img}
 function paintBg(){const el=document.getElementById('bg');if(!el)return;const b=UI.view.k==='band'&&D.bands[UI.view.id];const url=b?bandCover(b):'';const cv=el.firstElementChild;
   if(url){const css=`url("${url.replace(/"/g,'%22')}")`;if(cv.style.backgroundImage!==css)cv.style.backgroundImage=css;el.classList.add('on')}else el.classList.remove('on')}
 function render(){try{renderInner();paintBg()}catch(e){showFatal(e)}}
@@ -1087,13 +1140,13 @@ function renderInner(){
   UI.visible=new Set();
   const keep={};document.querySelectorAll('#frm input,#frm select,#f_claudein').forEach(el=>{if(el.id)keep[el.id]=el.value});
   const v=UI.view.k;
-  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='rated'||v==='albums'?vAlbums():v==='roulette'?vRoulette():v==='today'?vToday():v==='mkpl'?vMakePlaylist():v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
+  const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='rated'||v==='albums'?vAlbums():v==='roulette'?vRoulette():v==='today'?vToday():v==='mkpl'?vMakePlaylist():v==='tutorial'?vTutorial(false):v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
   let notes='';
   if(cfg.clientId&&!tok&&v!=='settings')notes+=`<div class="notice">Spotify no está conectado. <button class="btn small spot" data-act="login">Conectar</button></div>`;
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
   if(UI.undo)notes+=`<div class="notice">${UI.undo.bands.length===1?`“${esc(UI.undo.bands[0].name)}” quitada de tu colección.`:`${UI.undo.bands.length} bandas quitadas de tu colección.`} <button class="btn small" data-act="undo">Deshacer</button></div>`;
   const n=bands().length;
-  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt="">Spotify <span>Soul</span></button><div class="btns"><button class="sync${UI.syncState==='Sin sincronizar'?' bad':''}" id="syncst" data-act="syncInfo" title="${esc(UI.syncErr||'')}">${esc(UI.syncState)}</button>${cfg.clientId?`<button class="btn small" data-act="settings">Ajustes</button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
+  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt="">Spotify <span>Soul</span></button><div class="btns"><button class="sync${UI.syncState==='Sin sincronizar'?' bad':''}" id="syncst" data-act="syncInfo" title="${esc(UI.syncErr||'')}">${esc(UI.syncState)}</button>${cfg.clientId?`<button class="btn small" data-act="tutorial" aria-label="Ayuda y tutorial" title="Ayuda">?</button><button class="btn small" data-act="settings">Ajustes</button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
   for(const id in keep){const el=document.getElementById(id);if(el&&el.type!=='checkbox')el.value=keep[id]}
 }
 
