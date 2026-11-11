@@ -50,6 +50,7 @@ h2{font-family:var(--display);font-weight:600;font-size:15px;text-transform:uppe
 button.row,a.row{cursor:pointer}
 .row:first-child{border-top:0}
 button.row:hover,a.row:hover{background:var(--tab)}
+.list .row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .row .name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:500}
 .row .sub{display:block;font-size:12px;color:var(--muted);font-weight:400}
 .secH{font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin:6px 0 -4px}
@@ -593,7 +594,7 @@ function vHome(){
   let h=`<input class="search" id="q" type="search" placeholder="Buscar en tu colección…" value="${esc(UI.q)}" autocomplete="off">`;
   const q=norm(UI.q);
   if(q){const hits=bands().filter(b=>norm(b.name).includes(q)||(b.albums||[]).some(a=>norm(a.t).includes(q))).sort(byName).slice(0,60);
-    return h+`<div class="section"><h2>Resultados</h2>${hits.length?`<div class="list">${hits.map(b=>bandRow(b,true)).join('')}</div>`:`<div class="empty">Nada con “${esc(UI.q)}” en tu colección. Para añadir una banda nueva usa “+ Banda”.</div>`}</div>`}
+    return h+`<div class="section"><h2>Resultados</h2>${hits.length?(UI.selMode?selList(hits)+selBar(true):`<div class="list">${hits.map(b=>bandRow(b,true)).join('')}</div>`):`<div class="empty">Nada con “${esc(UI.q)}” en tu colección. Para añadir una banda nueva usa “+ Banda”.</div>`}</div>`}
   if(!bands().length&&!D.tree.genres.length)return h+`<div class="empty"><b>Tu colección está vacía.</b> Empieza importando desde Spotify: tus artistas seguidos, tus álbumes guardados o tus listas. Todo cae en “Sin clasificar” y luego lo repartes por géneros.</div><div class="btns"><button class="btn primary" data-go="${J({k:'import'})}">Importar desde Spotify</button><button class="btn" data-act="newGenre">+ Género</button></div>`+(UI.form?formHtml():'');
   h+=homeBanners();
   if(!UI.pick||!D.bands[UI.pick]){const p=rediscover();UI.pick=p&&p.id}
@@ -620,7 +621,7 @@ function vGenre(){
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'')+(UI.selMode&&loose.length?selBar(true):'');
 }
 function subRows(g,list,ct){return `<div class="list crate">${list.slice().sort(byName).map(x=>{const f=findAny(x.id),sh=twins(x).length>1,kids=sharedChildren(x).length;return `<button class="row" data-go="${J({k:'sub',g:f?f.g.id:g.id,s:x.id,cg:g.id,ct:ct||[]})}"><span class="tabmark"></span><span class="name divider">${esc(x.name)}${kids||sh?`<span class="sub" style="font-family:var(--body);text-transform:none;letter-spacing:0">${[kids?`${kids} subgénero${kids===1?'':'s'}`:'',sh?'compartido':''].filter(Boolean).join(' · ')}</span>`:''}</span><span class="meta">${countIn(g.id,x.id)}</span></button>`}).join('')}</div>`}
-function selList(list){list.forEach(b=>{if(!b.img&&b.sid)UI.visible.add(b.id)});return `<div class="list">${list.map(b=>`<label class="row chk" style="cursor:pointer"><input type="checkbox" data-sel="${b.id}" ${UI.sel.has(b.id)?'checked':''}>${thumb(b.img)}<span class="name">${esc(b.name)}<span class="sub">${esc((b.spGenres||[]).slice(0,4).join(' · ')||'—')}</span></span>${b.sid?`<a class="btn small spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener" title="Ver ${esc(b.name)} en Spotify">Spotify ↗</a>`:''}${UI.view.k==='unclassified'?`<button class="btn small danger" data-act="delOne" data-id="${b.id}" title="Quitar de mi colección" aria-label="Quitar ${esc(b.name)} de mi colección">✕</button>`:''}</label>`).join('')}</div>`}
+function selList(list){UI.selIds=list.map(b=>b.id);list.forEach(b=>{if(!b.img&&b.sid)UI.visible.add(b.id)});return `<div class="list">${list.map(b=>`<label class="row chk" style="cursor:pointer"><input type="checkbox" data-sel="${b.id}" ${UI.sel.has(b.id)?'checked':''}>${thumb(b.img)}<span class="name">${esc(b.name)}<span class="sub">${esc((b.spGenres||[]).slice(0,4).join(' · ')||'—')}</span></span>${b.sid?`<a class="btn small spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener" title="Ver ${esc(b.name)} en Spotify">Spotify ↗</a>`:''}${UI.view.k==='unclassified'?`<button class="btn small danger" data-act="delOne" data-id="${b.id}" title="Quitar de mi colección" aria-label="Quitar ${esc(b.name)} de mi colección">✕</button>`:''}</label>`).join('')}</div>`}
 async function importFollowed(prog){let url='/me/following?type=artist&limit=50',n=0,added=0;while(url&&n++<100){const r=await sp(url);for(const ar of r.artists.items)if(addArtist(ar).isNew)added++;prog&&prog(bands().length);url=r.artists.next}return added}
 /* ================= MusicBrainz: fechas originales y géneros (gratis, 1 petición por segundo) ================= */
 const MB='https://musicbrainz.org/ws/2';let mbQ=Promise.resolve(),mbDown=0;
@@ -741,7 +742,7 @@ function removeBands(ids){const bs=[],kids=[];for(const id of ids){const b=D.ban
   UI.undo={bands:bs,kids};touch();render()}
 function getDests(){const out=[...(UI.dests||[])];const el=document.getElementById('f_move');const v=el&&el.value;if(v&&v!=='|'&&!out.includes(v))out.push(v);return out.map(d=>{const [g,sb]=d.split('|');return{g,s:sb||null}}).filter(d=>G(d.g))}
 function destChips(){return (UI.dests||[]).map((d,i)=>{const [g,sb]=d.split('|');return `<span class="dest">${esc(pName({g,s:sb||null}))}<button data-act="rmDest" data-i="${i}" aria-label="Quitar">✕</button></span>`}).join('')}
-function selBar(all){const n=(UI.dests||[]).length;return `<div class="bar"><span class="meta" style="font-family:var(--mono);font-size:12px">${UI.sel.size} marcadas</span>${destChips()}${placeSelect('f_move','','',n?'Añadir otra rama…':'Elegir rama…')}<button class="btn small" data-act="addDest" title="Añadir esta rama a la lista">+ Rama</button><button class="btn primary small" data-act="moveSel" ${UI.sel.size?'':'disabled'}>${all?'Mover':'Colocar'}</button>${all?`<button class="btn small" data-act="addSel" ${UI.sel.size?'':'disabled'}>Añadir también</button><button class="btn small" data-act="selMode">Listo</button>`:`<button class="btn small" data-act="selAll">Todas</button><button class="btn small danger" data-act="delSel" ${UI.sel.size?'':'disabled'}>Quitar de la colección</button>`}<span class="hint" style="flex-basis:100%">Para varias ramas a la vez, elige una y pulsa + Rama; repite y luego ${all?'Mover o Añadir también':'Colocar'}.</span></div>`}
+function selBar(all){const n=(UI.dests||[]).length;return `<div class="bar"><span class="meta" style="font-family:var(--mono);font-size:12px">${UI.sel.size} marcadas</span>${destChips()}${placeSelect('f_move','','',n?'Añadir otra rama…':'Elegir rama…')}<button class="btn small" data-act="addDest" title="Añadir esta rama a la lista">+ Rama</button><button class="btn primary small" data-act="moveSel" ${UI.sel.size?'':'disabled'}>${all?'Mover':'Colocar'}</button>${all?`<button class="btn small" data-act="addSel" ${UI.sel.size?'':'disabled'}>Añadir también</button><button class="btn small" data-act="selAll">Todas</button>${UI.confirmDel?`<span style="flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>¿Quitar ${UI.sel.size} banda${UI.sel.size===1?'':'s'} de tu colección?</b><button class="btn small danger" data-act="delSel">Sí, quitar</button><button class="btn small" data-act="noDel">No</button></span>`:`<button class="btn small danger" data-act="askDel" ${UI.sel.size?'':'disabled'}>Quitar de la colección</button>`}<button class="btn small" data-act="selMode">Cancelar</button>`:`<button class="btn small" data-act="selAll">Todas</button><button class="btn small danger" data-act="delSel" ${UI.sel.size?'':'disabled'}>Quitar de la colección</button>`}<span class="hint" style="flex-basis:100%">${all?'Toca una banda para marcarla o desmarcarla. ':''}Para varias ramas a la vez, elige una y pulsa + Rama; repite y luego ${all?'Mover o Añadir también':'Colocar'}.</span></div>`}
 function vSub(){
   const g=G(UI.view.g),s=SG(g,UI.view.s);if(!s)return fallback();
   const cg=G(UI.view.cg)||g,ct=(UI.view.ct||[]).map(id=>findAny(id)).filter(Boolean);
@@ -947,7 +948,7 @@ function vRoulette(){
 function vFavs(){const [pg,ps]=(UI.view.place||'|').split('|');let match=()=>true;
   if(pg&&G(pg)){if(ps&&findAny(ps)){const ids=shareIds(findAny(ps).s);match=b=>places(b).some(p=>ids.has(p.s))}else{const gids=new Set();for(const x of G(pg).subs)shareIds(x).forEach(i=>gids.add(i));match=b=>places(b).some(p=>p.g===pg||gids.has(p.s))}}
   const l=topBands(b=>b.fav&&match(b));
-  return crumbs([{t:'Inicio',v:{k:'home'}},{t:'Favoritas'}])+`<h1>Favoritas</h1><label>Género${placeSelect('f_favplace',pg,ps,'Todos los géneros')}</label>`+favList(l,true)}
+  return crumbs([{t:'Inicio',v:{k:'home'}},{t:'Favoritas'}])+`<h1>Favoritas</h1><label>Género${placeSelect('f_favplace',pg,ps,'Todos los géneros')}</label>`+(UI.selMode&&l.length?selList(favFirst(l))+selBar(true):favList(l,true))}
 function vForgotten(){
   const list=bands().sort((a,b)=>(a.lastOpened||0)-(b.lastOpened||0)).slice(0,100);
   return crumbs([{t:'Inicio',v:{k:'home'}},{t:'Olvidadas'}])+`<h1>Olvidadas</h1><span class="hint">Las que llevas más tiempo sin abrir, primero.</span>`+(list.length?`<div class="list">${list.map(b=>`<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${esc(b.name)}</span><span class="meta">${esc(ago(b.lastOpened))}</span></button>`).join('')}</div>`:`<div class="empty">Todavía no hay bandas.</div>`);
@@ -1122,25 +1123,27 @@ app.addEventListener('click',async e=>{
         for(const a of items){const k=(a.name||'').toLowerCase();if(have.has(a.id)||seenT.has(k))continue;seenT.add(k);b.albums.push({id:a.id,t:a.name,y:(a.release_date||'').slice(0,4),type:'single',n:a.total_tracks||0,img:imgOf(a.images),imgL:((a.images||[]).slice().sort((p,q)=>(q.width||0)-(p.width||0))[0]||{}).url||''})}
         b.singlesAt=Date.now();UI.showSingles=true;touch();if(!items.length)say('Esta banda no tiene singles ni EPs en Spotify.')}
       catch(e){say(spErr(e),true)}UI.busy=null;render();break}
-    case'selAll':{const l=unclassified();if(UI.sel.size===l.length)UI.sel.clear();else l.forEach(b=>UI.sel.add(b.id));render();break}
+    case'selAll':{const l=UI.selIds||[];if(l.every(id=>UI.sel.has(id)))UI.sel.clear();else l.forEach(id=>UI.sel.add(id));render();break}
     case'rmAlso':{const b=D.bands[v.id];b.also.splice(+a.dataset.i,1);touch();render();break}
     case'addAlso':{const b=D.bands[v.id],[gg,ss]=(document.getElementById('f_also').value||'|').split('|');if(!gg)return;if(!addAlso(b,gg,ss))say('Ya está en esa rama.',true);touch();render();break}
-    case'selMode':UI.selMode=!UI.selMode;UI.sel.clear();render();break;
+    case'selMode':UI.selMode?exitSel():enterSel(null);break;
+    case'askDel':UI.confirmDel=true;render();break;
+    case'noDel':UI.confirmDel=false;render();break;
     case'delOne':{e.preventDefault();removeBands([a.dataset.id]);break}
-    case'delSel':removeBands([...UI.sel]);break;
+    case'delSel':{const ids=[...UI.sel];if(UI.selMode)endSel();removeBands(ids);break}
     case'syncInfo':{if(UI.syncState==='Sin sincronizar'){say((UI.syncErr||'No se pudo guardar en GitHub.')+' Reintentando ahora…',true);clearTimeout(retryTimer);await pushRemote();if(UI.syncState==='Sincronizado')say('Sincronizado: los cambios ya están guardados en GitHub.')}else if(UI.syncState)say(UI.syncState==='Sincronizado'?'Todo guardado en GitHub.':UI.syncState);break}
     case'unignore':{delete D.ignored[a.dataset.sid];touch();say('Esa banda podrá volver a entrar al importar.');break}
     case'unignoreAll':{D.ignored={};touch();say('Todas las bandas excluidas podrán volver a entrar al importar.');break}
     case'undo':{const u=UI.undo;if(!u)break;for(const b of u.bands){D.bands[b.id]=b;if(b.sid)delete D.ignored[b.sid]}for(const k of u.kids){const c=D.bands[k.id];if(c)c.parentId=k.parentId}UI.undo=null;touch();render();break}
     case'addDest':{const val=document.getElementById('f_move').value;if(!val||val==='|'){say('Elige una rama en la lista.',true);return}UI.dests=UI.dests||[];if(!UI.dests.includes(val))UI.dests.push(val);render();break}
     case'rmDest':UI.dests.splice(+a.dataset.i,1);render();break;
-    case'addSel':{const ds=getDests();if(!ds.length){say('Elige un destino en la lista.',true);return}let n=0;for(const id of UI.sel){const b=D.bands[id];if(!b)continue;let any=false;for(const d of ds)if(addAlso(b,d.g,d.s))any=true;if(any)n++}UI.dests=[];UI.sel.clear();touch();UI.selMode=false;say(`${n} añadida${n===1?'':'s'} también a esa rama.`);break}
+    case'addSel':{const ds=getDests();if(!ds.length){say('Elige un destino en la lista.',true);return}let n=0;for(const id of UI.sel){const b=D.bands[id];if(!b)continue;let any=false;for(const d of ds)if(addAlso(b,d.g,d.s))any=true;if(any)n++}UI.dests=[];endSel();touch();say(`${n} añadida${n===1?'':'s'} también a esa rama.`);break}
     case'copyForClaude':case'copyAllForClaude':{UI.claudeOut=exportForClaude(act==='copyAllForClaude');let ok=false;try{await navigator.clipboard.writeText(UI.claudeOut);ok=true}catch(_){}say(ok?'Copiado, con las instrucciones incluidas. Pégaselo a Claude u otra IA.':'Selecciona todo el texto del recuadro y cópialo.');if(!ok)setTimeout(()=>{const t=document.getElementById('claudeout');t&&t.select()},0);break}
     case'showCode':UI.showCode=true;render();break;
     case'copyCode':{const t=document.getElementById('codebox');try{await navigator.clipboard.writeText(t.value);say('Código copiado. Pásatelo al móvil y pégalo allí en Ajustes.')}catch(_){t.select();say('Selecciona el código y cópialo.')}break}
     case'syncNow':{await pushRemote();render();break}
     case'unsync':cfg.ghToken='';cfg.gistId='';LS.set('md_cfg',cfg);LS.del('md_base');UI.syncState='';UI.showCode=false;render();break;
-    case'moveSel':{const ds=getDests();if(!ds.length){say('Elige un destino en la lista.',true);return}const gg=ds[0].g,ss=ds[0].s;let n=0;const shv=v.k==='sub'?new Set(twins(SG(G(v.g),v.s)).map(t=>t.s.id).concat(v.s)):null;const mh=x=>v.k==='sub'?shv.has(x.s):v.k==='genre'?(x.g===v.g&&!SG(G(v.g),x.s)):true;for(const id of UI.sel){const b=D.bands[id];if(!b)continue;n++;const nw={g:gg,s:ss||null};if(mh({g:b.genreId,s:b.subId})||!G(b.genreId)){b.genreId=nw.g;b.subId=nw.s}else{const ai=(b.also||[]).findIndex(mh);if(ai>=0)b.also[ai]=nw;else{b.genreId=nw.g;b.subId=nw.s}}for(const d of ds.slice(1))addAlso(b,d.g,d.s);b.also=(b.also||[]).filter((x,i,arr)=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null))&&arr.findIndex(y=>y.g===x.g&&(y.s||null)===(x.s||null))===i)}UI.selMode=false;UI.sel.clear();UI.dests=[];touch();say(`${n} colocada${n===1?'':'s'}`+(ds.length>1?` en ${ds.length} ramas.`:'.'));break}
+    case'moveSel':{const ds=getDests();if(!ds.length){say('Elige un destino en la lista.',true);return}const gg=ds[0].g,ss=ds[0].s;let n=0;const shv=v.k==='sub'?new Set(twins(SG(G(v.g),v.s)).map(t=>t.s.id).concat(v.s)):null;const mh=x=>v.k==='sub'?shv.has(x.s):v.k==='genre'?(x.g===v.g&&!SG(G(v.g),x.s)):true;for(const id of UI.sel){const b=D.bands[id];if(!b)continue;n++;const nw={g:gg,s:ss||null};if(mh({g:b.genreId,s:b.subId})||!G(b.genreId)){b.genreId=nw.g;b.subId=nw.s}else{const ai=(b.also||[]).findIndex(mh);if(ai>=0)b.also[ai]=nw;else{b.genreId=nw.g;b.subId=nw.s}}for(const d of ds.slice(1))addAlso(b,d.g,d.s);b.also=(b.also||[]).filter((x,i,arr)=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null))&&arr.findIndex(y=>y.g===x.g&&(y.s||null)===(x.s||null))===i)}endSel();UI.dests=[];touch();say(`${n} colocada${n===1?'':'s'}`+(ds.length>1?` en ${ds.length} ramas.`:'.'));break}
     case'autoClass':{const m=autoMatches();for(const x of m){x.b.genreId=x.g;x.b.subId=x.s}touch();say(`${m.length} clasificada${m.length===1?'':'s'} por sus géneros de Spotify.`);break}
     case'delGenre':{const n=countIn(v.g);UI.form=null;UI.confirm={w:'genre',msg:n?`Tiene ${n} banda(s); pasarán a “Sin clasificar”. ¿Borrar el género y sus subgéneros?`:'¿Borrar este género y sus subgéneros?'};render();break}
     case'delSub':{if(twins(SG(G(v.g),v.s)).length>1){UI.form=null;UI.confirm={w:'sub',msg:'¿Quitar este subgénero de aquí? Es compartido: sus bandas y lo que tiene dentro siguen en la otra rama.'};render();break}const n=countIn(v.g,v.s),fs=findSub(G(v.g),v.s),up=fs.path.length?fs.path[fs.path.length-1].name:G(v.g).name;UI.form=null;UI.confirm={w:'sub',msg:(n?`Hay ${n} banda(s) aquí o en sus subgéneros; pasarán a “${up}”. `:'')+'¿Borrar este subgénero'+(fs.s.subs.length?' y los que tiene dentro':'')+'?'};render();break}
@@ -1204,7 +1207,22 @@ function showFatal(e){console.error(e);app.innerHTML=`<header class="top"><butto
 window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(ev.error||ev.message)});
 window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(_){}
-window.addEventListener('popstate',e=>{const v=e.state&&e.state.v;go(v&&v.k?v:{k:'home'},true)});
+window.addEventListener('popstate',e=>{const v=e.state&&e.state.v;
+  if(v&&JSON.stringify(v)===JSON.stringify(UI.view)){if(UI.selMode){UI.selMode=false;UI.sel.clear();UI.confirmDel=false}render();return}
+  go(v&&v.k?v:{k:'home'},true)});
+function enterSel(id){UI.selMode=true;UI.sel.clear();UI.confirmDel=false;if(id)UI.sel.add(id);try{history.pushState({v:UI.view,sel:1},'')}catch(_){}render()}
+function endSel(){UI.selMode=false;UI.sel.clear();UI.confirmDel=false;try{if(history.state&&history.state.sel)history.back()}catch(_){}}
+function exitSel(){const back=history.state&&history.state.sel;endSel();if(!back)render()}
+// dejar pulsada una banda: entra en modo selección con ella marcada
+let lp=null,lpFired=false;const LP_VIEWS=['genre','sub','favs','home'];
+app.addEventListener('pointerdown',e=>{lpFired=false;if(UI.selMode||e.button>0)return;const el=e.target.closest('[data-go]');if(!el||!el.closest('.list'))return;
+  if(!LP_VIEWS.includes(UI.view.k)||(UI.view.k==='home'&&!UI.q))return;let v;try{v=JSON.parse(el.dataset.go)}catch(_){return}if(v.k!=='band')return;
+  clearTimeout(lp&&lp.t);lp={x:e.clientX,y:e.clientY,t:setTimeout(()=>{lp=null;lpFired=true;try{navigator.vibrate&&navigator.vibrate(15)}catch(_){}enterSel(v.id)},500)}});
+const lpCancel=()=>{if(lp){clearTimeout(lp.t);lp=null}};
+app.addEventListener('pointermove',e=>{if(lp&&Math.hypot(e.clientX-lp.x,e.clientY-lp.y)>10)lpCancel()});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>app.addEventListener(ev,lpCancel));window.addEventListener('scroll',lpCancel,{passive:true});
+app.addEventListener('click',e=>{if(lpFired){lpFired=false;e.preventDefault();e.stopPropagation()}},true);
+app.addEventListener('contextmenu',e=>{if(e.target.closest('.list [data-go]')&&LP_VIEWS.includes(UI.view.k))e.preventDefault()});
 (async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,5000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setInterval(()=>mbLoader(),3600e3);})();
 })();
 </script>
