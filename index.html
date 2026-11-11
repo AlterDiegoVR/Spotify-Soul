@@ -206,7 +206,7 @@ function mergeData(base,L,R){
       M.bands[id]=lb;continue}
     // solo en el otro dispositivo
     if(bb)continue; // la borraste aquí
-    if(!base&&rb.sid&&LI[rb.sid])continue;
+    if(rb.sid&&LI[rb.sid])continue; // la quitaste de tu colección aquí
     M.bands[id]=rb}
   return M}
 let syncN=0;
@@ -218,19 +218,22 @@ async function pushRemote(){
   pushing=true;UI.syncState='Sincronizando…';renderSync();let changed=false;
   try{
     if(!cfg.gistId){
-      const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:'Spotify Soul (datos)',public:false,files:{[GIST_FILE]:{content:JSON.stringify(D)}}})});
-      cfg.gistId=g.id;LS.set('md_cfg',cfg);LS.set('md_base',snapOf(D));
+      const snap=snapOf(D),body=JSON.stringify({description:'Spotify Soul (datos)',public:false,files:{[GIST_FILE]:{content:JSON.stringify(D)}}});const g=await gh('/gists',{method:'POST',body});
+      cfg.gistId=g.id;LS.set('md_cfg',cfg);LS.set('md_base',snap);
     }else if(LS.get('md_force',0)){
-      await writeGist(D);LS.set('md_base',snapOf(D));LS.del('md_force');
+      const snap=snapOf(D);await writeGist(D);LS.set('md_base',snap);LS.del('md_force');
     }else{
       const remote=await readGist();
-      if(!remote){await writeGist(D);LS.set('md_base',snapOf(D))}
+      if(!remote){const snap=snapOf(D);await writeGist(D);LS.set('md_base',snap)}
       else{
         const before=hs(D);const M=mergeData(LS.get('md_base',null),D,remote);
         D=M;fixTree();LS.set('md_data',D);changed=hs(D)!==before;
         if(changed)bgRender();
-        if(hs(D)!==hs(remote))await writeGist(D);
-        LS.set('md_base',snapOf(D));
+        // la base es exactamente lo que se sube: si cambias algo mientras se sube, ese cambio no se da por sincronizado
+        const snap=snapOf(D),h0=hs(D);
+        if(h0!==hs(remote))await writeGist(D);
+        LS.set('md_base',snap);
+        if(hs(D)!==h0)pendingPush=true;
       }
     }
     UI.syncState='Sincronizado';UI.syncErr='';retryN=0;clearTimeout(retryTimer);
