@@ -503,6 +503,7 @@ const favFirst=l=>l.slice().sort((a,b)=>(b.fav?1:0)-(a.fav?1:0)||byName(a,b));
 function favBtn(n){return `<button class="btn small${UI.favOnly?' favon':''}" data-act="favOnly" aria-pressed="${!!UI.favOnly}">${UI.favOnly?'♥ Viendo favoritas':'♡ Solo favoritas'}${n?` (${n})`:''}</button>`}
 function favList(list,showPath){return list.length?`<div class="list">${favFirst(list).map(b=>bandRow(b,showPath)).join('')}</div>`:`<div class="empty">No hay favoritas aquí todavía. Márcalas con ♡ dentro de cada banda.</div>`}
 const FMTS=['LP','CD','Casete','Digital'];
+const rymSlug=n=>(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/&/g,' and ').replace(/['’.]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 const albumYear=(b,a)=>(b.years||{})[a.id]||(a.md||'').slice(0,4)||a.y||'';
 function scopeMatch(place){const [pg,ps]=(place||'|').split('|');if(!pg||!G(pg))return()=>true;
   if(ps&&findAny(ps)){const ids=shareIds(findAny(ps).s);return b=>places(rootOf(b)).some(p=>ids.has(p.s))}
@@ -808,7 +809,7 @@ function vBand(){
   const chain=[];let x=b;while(x.parentId&&D.bands[x.parentId]&&chain.length<10){x=D.bands[x.parentId];chain.unshift(x)}
   chain.forEach(c=>parts.push({t:c.name,v:{k:'band',id:c.id}}));parts.push({t:b.name});
   let h=crumbs(parts)+`<div class="hero">${b.img?`<img src="${esc(b.img)}" alt="">`:''}<div class="in"><h1>${esc(b.name)}</h1>${b.note?`<span class="hint">${esc(b.note)}</span>`:''}${(b.spGenres||[]).length?`<div class="tags">${b.spGenres.slice(0,6).map(g=>`<span class="tag">${esc(g)}</span>`).join('')}</div>`:''}</div></div>`;
-  h+=`<div class="btns">${b.sid?`<a class="btn spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener">Abrir en Spotify</a>`:''}<a class="btn" href="https://rateyourmusic.com/search?searchtype=a&searchterm=${encodeURIComponent(b.name)}" target="_blank" rel="noopener">Rate Your Music ↗</a><button class="btn${b.fav?' favon':''}" data-act="favBand" aria-pressed="${!!b.fav}">${b.fav?'♥ Favorita':'♡ Favorita'}</button><button class="btn" data-act="editBand">Mover / editar</button>${b.sid&&tok?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:''}</div>`;
+  h+=`<div class="btns">${b.sid?`<a class="btn spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener">Abrir en Spotify</a>`:''}<a class="btn" href="https://rateyourmusic.com/artist/${rymSlug(b.name)}" target="_blank" rel="noopener">Rate Your Music ↗</a><button class="btn${b.fav?' favon':''}" data-act="favBand" aria-pressed="${!!b.fav}">${b.fav?'♥ Favorita':'♡ Favorita'}</button><button class="btn" data-act="editBand">Mover / editar</button>${b.sid&&tok?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:''}</div>`;
   if(others.length&&!b.parentId)h+=`<div class="btns"><span class="hint">También en:</span>${others.map(p=>`<button class="btn small" data-go="${J(p.s?{k:'sub',g:p.g,s:p.s}:{k:'genre',g:p.g})}">${esc(pName(p))}</button>`).join('')}</div>`;
   if(UI.form)h+=formHtml();if(UI.confirm)h+=confirmHtml();
   if(UI.busy)h+=`<div class="notice">${esc(UI.busy)}</div>`;
