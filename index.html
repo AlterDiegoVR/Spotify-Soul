@@ -170,7 +170,12 @@ function bgRender(){clearTimeout(bgRT);bgRT=null;
 
 /* ================= guardado + sincronización (Gist) ================= */
 let saveTimer=null,pushing=false,pendingPush=false,retryTimer=null,retryN=0,ghUntil=0,lastPull=0;
-function touch(){D.updated=Date.now();LS.set('md_data',D);if(cfg.ghToken){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveTimer=null;pushRemote()},5000)}}
+// Los cambios se guardan al momento en este dispositivo y se suben a GitHub solo al dejar la app, al volver a ella,
+// como mucho cada 3 minutos si hay cambios pendientes, o con "Sincronizar ahora".
+let dirty=LS.get('md_dirty',false);
+function setDirty(v){if(dirty!==v){dirty=v;LS.set('md_dirty',v)}}
+function touch(){D.updated=Date.now();LS.set('md_data',D);if(cfg.ghToken){setDirty(true);if(!pushing&&UI.syncState!=='Sin sincronizar'){UI.syncState='Cambios sin subir';renderSync()}
+  if(!saveTimer)saveTimer=setTimeout(()=>{saveTimer=null;if(dirty&&document.visibilityState==='visible')pushRemote()},3*60000)}}
 async function gh(path,opts={}){
   if(Date.now()<ghUntil){const e=new Error('GitHub 403: límite de la API, esperando');e.status=403;e.wait=ghUntil-Date.now();throw e}
   const r=await fetch('https://api.github.com'+path,{...opts,headers:{'Authorization':'Bearer '+cfg.ghToken,'Accept':'application/vnd.github+json','Content-Type':'application/json',...(opts.headers||{})}});
@@ -220,12 +225,12 @@ async function pushRemote(){
   try{
     if(!cfg.gistId){
       const snap=snapOf(D),body=JSON.stringify({description:'Spotify Soul (datos)',public:false,files:{[GIST_FILE]:{content:JSON.stringify(D)}}});const g=await gh('/gists',{method:'POST',body});
-      cfg.gistId=g.id;LS.set('md_cfg',cfg);LS.set('md_base',snap);
+      cfg.gistId=g.id;LS.set('md_cfg',cfg);LS.set('md_base',snap);setDirty(false);
     }else if(LS.get('md_force',0)){
-      const snap=snapOf(D);await writeGist(D);LS.set('md_base',snap);LS.del('md_force');
+      const snap=snapOf(D),h0=hs(D);await writeGist(D);LS.set('md_base',snap);LS.del('md_force');setDirty(hs(D)!==h0);
     }else{
       const remote=await readGist();
-      if(!remote){const snap=snapOf(D);await writeGist(D);LS.set('md_base',snap)}
+      if(!remote){const snap=snapOf(D),h0=hs(D);await writeGist(D);LS.set('md_base',snap);setDirty(hs(D)!==h0)}
       else{
         const before=hs(D);const M=mergeData(LS.get('md_base',null),D,remote);
         D=M;fixTree();LS.set('md_data',D);changed=hs(D)!==before;
@@ -234,10 +239,11 @@ async function pushRemote(){
         const snap=snapOf(D),h0=hs(D);
         if(h0!==hs(remote))await writeGist(D);
         LS.set('md_base',snap);
-        if(hs(D)!==h0)pendingPush=true;
+        setDirty(hs(D)!==h0);
       }
     }
-    UI.syncState='Sincronizado';UI.syncErr='';retryN=0;clearTimeout(retryTimer);
+    if(!LS.get('md_force',0)&&!dirty)setDirty(false);
+    UI.syncState=dirty?'Cambios sin subir':'Sincronizado';lastPull=Date.now();UI.syncErr='';retryN=0;clearTimeout(retryTimer);
   }catch(e){console.error(e);UI.syncState='Sin sincronizar';
     UI.syncErr=e.status===401?'El token de GitHub no es válido o ha caducado. Pon uno nuevo en Ajustes.':e.status===404?'No encuentro el Gist de la colección. Revisa la sincronización en Ajustes.':(e.status===403||e.status===429)?'GitHub ha llegado al límite de peticiones por hora de tu cuenta. Se sincronizará sola'+(ghUntil>Date.now()?' hacia las '+new Date(ghUntil).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):' en cuanto pase')+'. Tus cambios están guardados en este dispositivo.':e.status===422?'GitHub ha rechazado los datos ('+e.message+').':'No se pudo conectar con GitHub ('+(e.message||'sin conexión')+'). Se reintenta solo.';
     if(e.status!==401&&e.status!==404){retryN++;const wait=Math.min(Math.max((e.wait||0)+2000,30000*Math.pow(2,retryN-1)),65*60000);clearTimeout(retryTimer);retryTimer=setTimeout(pushRemote,wait)}}
@@ -321,7 +327,10 @@ function applyClaude(text){
   touch();UI.view={k:'home'};say(`Clasificadas ${ok} banda${ok===1?'':'s'}`+(moved?` (${moved} cambiadas de sitio)`:'')+'.'+(kept?` ${kept} ya las habías colocado tú y no se han tocado.`:'')+(bad?` ${bad} no se pudieron aplicar.`:''));
 }
 async function pullRemote(){if(!cfg.ghToken||!cfg.gistId)return false;return pushRemote()}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!saveTimer&&!pushing&&Date.now()-lastPull>60000){lastPull=Date.now();pullRemote()}if(document.visibilityState==='hidden'&&saveTimer){clearTimeout(saveTimer);saveTimer=null;pushRemote()}});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'){if(dirty&&cfg.ghToken)pushRemote();return}
+  if(!pushing&&cfg.ghToken&&(dirty||Date.now()-lastPull>60000)){lastPull=Date.now();pullRemote()}});
+window.addEventListener('pagehide',()=>{if(dirty&&cfg.ghToken&&!pushing)pushRemote()});
 
 /* ================= Spotify: login PKCE + API ================= */
 const b64url=buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
@@ -1134,7 +1143,7 @@ app.addEventListener('click',async e=>{
     case'noDel':UI.confirmDel=false;render();break;
     case'delOne':{e.preventDefault();removeBands([a.dataset.id]);break}
     case'delSel':{const ids=[...UI.sel];if(UI.selMode)endSel();removeBands(ids);break}
-    case'syncInfo':{if(UI.syncState==='Sin sincronizar'){say((UI.syncErr||'No se pudo guardar en GitHub.')+' Reintentando ahora…',true);clearTimeout(retryTimer);await pushRemote();if(UI.syncState==='Sincronizado')say('Sincronizado: los cambios ya están guardados en GitHub.')}else if(UI.syncState)say(UI.syncState==='Sincronizado'?'Todo guardado en GitHub.':UI.syncState);break}
+    case'syncInfo':{if(UI.syncState==='Sin sincronizar'){say((UI.syncErr||'No se pudo guardar en GitHub.')+' Reintentando ahora…',true);clearTimeout(retryTimer);await pushRemote();if(UI.syncState==='Sincronizado')say('Sincronizado: los cambios ya están guardados en GitHub.')}else if(UI.syncState==='Cambios sin subir'){await pushRemote();say(UI.syncState==='Sincronizado'?'Sincronizado: los cambios ya están guardados en GitHub.':(UI.syncErr||UI.syncState),UI.syncState!=='Sincronizado')}else if(UI.syncState)say(UI.syncState==='Sincronizado'?'Todo guardado en GitHub.':UI.syncState);break}
     case'unignore':{delete D.ignored[a.dataset.sid];touch();say('Esa banda podrá volver a entrar al importar.');break}
     case'unignoreAll':{D.ignored={};touch();say('Todas las bandas excluidas podrán volver a entrar al importar.');break}
     case'undo':{const u=UI.undo;if(!u)break;for(const b of u.bands){D.bands[b.id]=b;if(b.sid)delete D.ignored[b.sid]}for(const k of u.kids){const c=D.bands[k.id];if(c)c.parentId=k.parentId}UI.undo=null;touch();render();break}
