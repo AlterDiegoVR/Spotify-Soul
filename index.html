@@ -1093,7 +1093,7 @@ app.addEventListener('click',async e=>{
       if(pg){UI.form=null;render();fetchDisco(b).then(render).catch(()=>{})}else go({k:'band',id:b.id});
       break}
     case'mbUncl':{const left=unclassified().filter(b=>b.sid&&!b.mbAt).length;UI.mbPrefer='uncl';UI.mbProg={done:0,total:left};render();mbLoader(left).then(()=>{UI.mbPrefer=null;render()});break}
-    case'remindOff':{const st=LS.get('md_remind',null);if(st){st.dismissed=true;LS.set('md_remind',st)}render();break}
+    case'remindOff':{const st=LS.get('md_remind2',null);if(st){st.dismissed=true;LS.set('md_remind2',st)}render();break}
     case'plOpt':{const k=a.dataset.k,val=a.dataset.v;const nv={...v,[k]:k==='min'?+val:val};const nm=document.getElementById('f_plname');if(nm)nv.name=nm.value;UI.view=nv;render();break}
     case'backup':{const blob=new Blob([JSON.stringify(D)],{type:'application/json'});const url=URL.createObjectURL(blob);const el=document.createElement('a');el.href=url;el.download='spotify-soul-copia-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(el);el.click();el.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);say('Copia descargada.');break}
     case'restoreYes':{D=UI.restore;UI.restore=null;fixTree();if(cfg.ghToken)LS.set('md_force',1);LS.del('md_base');touch();say('Colección restaurada desde la copia.');go({k:'home'});break}
