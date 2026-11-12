@@ -809,7 +809,7 @@ function vBand(){
   const chain=[];let x=b;while(x.parentId&&D.bands[x.parentId]&&chain.length<10){x=D.bands[x.parentId];chain.unshift(x)}
   chain.forEach(c=>parts.push({t:c.name,v:{k:'band',id:c.id}}));parts.push({t:b.name});
   let h=crumbs(parts)+`<div class="hero">${b.img?`<img src="${esc(b.img)}" alt="">`:''}<div class="in"><h1>${esc(b.name)}</h1>${b.note?`<span class="hint">${esc(b.note)}</span>`:''}${(b.spGenres||[]).length?`<div class="tags">${b.spGenres.slice(0,6).map(g=>`<span class="tag">${esc(g)}</span>`).join('')}</div>`:''}</div></div>`;
-  h+=`<div class="btns">${b.sid?`<a class="btn spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener">Abrir en Spotify</a>`:''}<a class="btn" href="https://rateyourmusic.com/artist/${rymSlug(b.name)}" target="_blank" rel="noopener">Rate Your Music ↗</a><button class="btn${b.fav?' favon':''}" data-act="favBand" aria-pressed="${!!b.fav}">${b.fav?'♥ Favorita':'♡ Favorita'}</button><button class="btn" data-act="editBand">Mover / editar</button>${b.sid&&tok?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:''}</div>`;
+  h+=`<div class="btns">${b.sid?`<a class="btn spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener">Abrir en Spotify</a>`:''}<a class="btn" href="${esc(b.rym||'https://rateyourmusic.com/artist/'+rymSlug(b.name))}" target="_blank" rel="noopener">Rate Your Music ↗</a><button class="btn${b.fav?' favon':''}" data-act="favBand" aria-pressed="${!!b.fav}">${b.fav?'♥ Favorita':'♡ Favorita'}</button><button class="btn" data-act="editBand">Mover / editar</button>${b.sid&&tok?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:''}</div>`;
   if(others.length&&!b.parentId)h+=`<div class="btns"><span class="hint">También en:</span>${others.map(p=>`<button class="btn small" data-go="${J(p.s?{k:'sub',g:p.g,s:p.s}:{k:'genre',g:p.g})}">${esc(pName(p))}</button>`).join('')}</div>`;
   if(UI.form)h+=formHtml();if(UI.confirm)h+=confirmHtml();
   if(UI.busy)h+=`<div class="notice">${esc(UI.busy)}</div>`;
@@ -1024,6 +1024,7 @@ function formHtml(){
       <div class="btns">${placeSelect('f_also','','','Añadir otra rama…')}<button type="button" class="btn small" data-act="addAlso">Añadir</button></div></div></div>
       <label>Es relacionado de<select id="f_parent">${parents}</select></label>
       <label>Nota corta<input type="text" id="f_note" value="${esc(b.note||'')}" placeholder="p. ej. antes se llamaban…"></label>
+      <label>Enlace de Rate Your Music<input type="url" id="f_rym" value="${esc(b.rym||'')}" placeholder="https://rateyourmusic.com/artist/${esc(rymSlug(b.name))}"></label><span class="hint">Solo si el botón de Rate Your Music abre una ficha equivocada: pega aquí la dirección correcta. Vacío = la automática.</span>
       <button class="btn danger small" type="button" data-act="askDelBand" style="align-self:flex-start">Quitar de mi colección</button>`,'Guardar');
   }
   return '';
@@ -1043,7 +1044,7 @@ async function submitForm(id){
   else if(f.t==='renameSub'){const n=val('f_name');if(!n)return;SG(G(v.g),v.s).name=n;touch()}
   else if(f.t==='spsearch'){f.q=val('f_sq');if(!f.q)return;try{UI.spResults=(await sp('/search?type=artist&limit=10&q='+encodeURIComponent(f.q))).artists.items}catch(e){say(e.message==='nologin'?'Conecta Spotify en Ajustes.':e.message,true)}render();return}
   else if(f.t==='year'){const b=D.bands[f.b||v.id],al=(b.albums||[]).find(x=>x.id===f.a),y=val('f_y');if(y&&!/^\d{4}$/.test(y)){say('Escribe el año con cuatro cifras, por ejemplo 1983.',true);return}b.years=b.years||{};const auto=al?((al.md||'').slice(0,4)||al.y||''):'';if(!y||y===auto)delete b.years[f.a];else b.years[f.a]=y;touch()}
-  else if(f.t==='edit'){const b=D.bands[v.id];b.parentId=val('f_parent')||null;b.note=val('f_note');const [g,s]=(val('f_place')||'|').split('|');if(!b.parentId){b.genreId=g||null;b.subId=s||null;b.also=(b.also||[]).filter(x=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null)));fixPrimary(b)}else{b.genreId=null;b.subId=null;b.also=[]}touch()}
+  else if(f.t==='edit'){const b=D.bands[v.id];b.parentId=val('f_parent')||null;b.note=val('f_note');{const r=val('f_rym');if(r&&!/^https?:\/\/(www\.)?rateyourmusic\.com\//i.test(r)){say('Pega una dirección de rateyourmusic.com.',true);return}if(r)b.rym=r;else delete b.rym}const [g,s]=(val('f_place')||'|').split('|');if(!b.parentId){b.genreId=g||null;b.subId=s||null;b.also=(b.also||[]).filter(x=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null)));fixPrimary(b)}else{b.genreId=null;b.subId=null;b.also=[]}touch()}
   UI.form=null;render();
 }
 
