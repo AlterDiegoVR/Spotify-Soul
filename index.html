@@ -824,16 +824,17 @@ function vBand(){
   if(UI.busy)h+=`<div class="notice">${esc(UI.busy)}</div>`;
   const hidden=new Set(b.hidden||[]),picked=new Set(b.picked||[]);
   const yr=a=>albumYear(b,a);
-  const al=(b.albums||[]).filter(a=>!hidden.has(a.id)).sort((p,q)=>(yr(p)||'9999').localeCompare(yr(q)||'9999')||p.t.localeCompare(q.t,'es'));
+  const dir=b.rev?-1:1,al=(b.albums||[]).filter(a=>!hidden.has(a.id)).sort((p,q)=>{const x=yr(p),y=yr(q);if(!x!==!y)return x?-1:1;return dir*(x||'').localeCompare(y||'')||p.t.localeCompare(q.t,'es')});
+  const sortBtn=al.length>1?`<button class="btn small" data-act="revDisco" style="align-self:flex-start">${b.rev?'Más reciente primero ↓':'Más antiguo primero ↑'}</button>`:'';
   const main=al.filter(a=>a.type!=='single'),singles=al.filter(a=>a.type==='single');
   const row=a=>albumRow(b,a);
   if(!b.sid)h+=`<div class="section"><div class="empty">Esta banda no está enlazada a Spotify.</div>`;
   else if(!b.fetchedAt)h+=`<div class="section"><h2>Discografía</h2><div class="empty">${!tok?'Conecta Spotify (en Ajustes) para ver la discografía.':Date.now()<spBlocked?`${esc(spErr({message:'ratelimit'}))} La discografía se cargará sola cuando termine la pausa.`:'Cargando…'}</div>`;
   else if(picked.size&&!UI.fullDisco){
     const mine=al.filter(a=>picked.has(a.id));
-    h+=`<div class="section"><h2>Mi selección · ${mine.length}</h2><div class="list">${mine.map(row).join('')}</div><button class="btn small" data-act="fullDisco" style="align-self:flex-start">Ver discografía completa (${al.length})</button>`;
+    h+=`<div class="section"><h2>Mi selección · ${mine.length}</h2>${sortBtn}<div class="list">${mine.map(row).join('')}</div><button class="btn small" data-act="fullDisco" style="align-self:flex-start">Ver discografía completa (${al.length})</button>`;
   }else{
-    h+=`<div class="section"><h2>Discografía completa · ${main.length}</h2>`;
+    h+=`<div class="section"><h2>Discografía completa · ${main.length}</h2>${sortBtn}`;
     if(!picked.size&&main.length)h+=`<span class="hint">Marca con ✓ los discos que quieras ver siempre. Al entrar en la banda saldrán solo esos.</span>`;
     h+=main.length?`<div class="list">${main.map(row).join('')}</div>`:`<div class="empty">Spotify no tiene álbumes de este artista.</div>`;
     if(!singles.length&&b.sid&&b.fetchedAt&&!b.singlesAt)h+=`<button class="btn small" data-act="loadSingles" style="align-self:flex-start">Cargar singles y EPs</button>`;
@@ -1129,6 +1130,7 @@ app.addEventListener('click',async e=>{
     case'editYear':{UI.form={t:'year',a:a.dataset.a,b:a.dataset.b||v.id};render();setTimeout(()=>{const el=document.getElementById('f_y');if(el){el.focus();el.select()}},0);break}
     case'fullDisco':UI.fullDisco=!UI.fullDisco;render();break;
     case'unhide':{D.bands[v.id].hidden=[];touch();render();break}
+    case'revDisco':{const b=D.bands[v.id];if(!b)return;if(b.rev)delete b.rev;else b.rev=true;touch();render();break}
     case'toggleSingles':UI.showSingles=!UI.showSingles;render();break;
     case'loadSingles':{const b=D.bands[v.id];if(!b)return;UI.busy='Cargando singles y EPs…';render();
       try{const items=await spAll(`/artists/${b.sid}/albums?include_groups=single&limit=10`);const have=new Set((b.albums||[]).map(x=>x.id)),seenT=new Set();
