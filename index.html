@@ -638,9 +638,9 @@ async function mbGet(path,tries=0){
 const mbNorm=t=>norm(t).replace(/\s*[\(\[][^\)\]]*[\)\]]/g,'').replace(/\s+-\s+.*(remaster|deluxe|edition|version|anniversary|live|edición|reedición).*$/,'').replace(/[^a-z0-9\u00c0-\u024f]+/g,' ').trim();
 function mbMatchDates(b,rgs){
   const idx=new Map();for(const g of rgs){const d=g['first-release-date'];if(!d)continue;const k=mbNorm(g.title);if(k&&(!idx.has(k)||d<idx.get(k)))idx.set(k,d)}
-  let n=0;for(const a of b.albums||[]){const k=mbNorm(a.t);let d=idx.get(k);
-    if(!d&&k.length>=6){for(const [kk,dd] of idx){if(kk.length>=6&&(kk.startsWith(k)||k.startsWith(kk))){d=dd;break}}}
-    if(d&&(!a.y||+d.slice(0,4)<=+a.y+1)){if(a.md!==d){a.md=d;n++}}}
+  let n=0;for(const a of b.albums||[]){const d=idx.get(mbNorm(a.t));
+    if(d&&(!a.y||+d.slice(0,4)<=+a.y+1)){if(a.md!==d){a.md=d;n++}}
+    else if(a.md){delete a.md;n++}}
   return n}
 async function mbSync(b,force){
   if(!b.sid||cfg.autoMB===false)return false;
@@ -663,6 +663,7 @@ async function mbSync(b,force){
   if((b.albums||[]).length){mbMatchDates(b,rgs);b.mbDates=Date.now()}
   b.mbAt=Date.now();touch();return true;
 }
+if(!LS.get('md_mbfix1',false)){let k=0;for(const b of Object.values(D.bands||{}))if(b.mbid&&b.mbDates){b.mbDates=0;k++}LS.set('md_mbfix1',true);if(k)touch()}
 const MB_DAY=400,MB_RUN=40;let mbRunning=false;
 function mbNeed(b){return b.sid&&(!b.mbAt||((b.albums||[]).length&&!b.mbDates&&b.mbid))}
 function mbPick(){
@@ -1040,7 +1041,7 @@ async function submitForm(id){
   else if(f.t==='renameGenre'){const n=val('f_name');if(!n)return;G(v.g).name=n;touch()}
   else if(f.t==='renameSub'){const n=val('f_name');if(!n)return;SG(G(v.g),v.s).name=n;touch()}
   else if(f.t==='spsearch'){f.q=val('f_sq');if(!f.q)return;try{UI.spResults=(await sp('/search?type=artist&limit=10&q='+encodeURIComponent(f.q))).artists.items}catch(e){say(e.message==='nologin'?'Conecta Spotify en Ajustes.':e.message,true)}render();return}
-  else if(f.t==='year'){const b=D.bands[f.b||v.id],al=(b.albums||[]).find(x=>x.id===f.a),y=val('f_y');if(y&&!/^\d{4}$/.test(y)){say('Escribe el año con cuatro cifras, por ejemplo 1983.',true);return}b.years=b.years||{};if(!y||(al&&y===al.y))delete b.years[f.a];else b.years[f.a]=y;touch()}
+  else if(f.t==='year'){const b=D.bands[f.b||v.id],al=(b.albums||[]).find(x=>x.id===f.a),y=val('f_y');if(y&&!/^\d{4}$/.test(y)){say('Escribe el año con cuatro cifras, por ejemplo 1983.',true);return}b.years=b.years||{};const auto=al?((al.md||'').slice(0,4)||al.y||''):'';if(!y||y===auto)delete b.years[f.a];else b.years[f.a]=y;touch()}
   else if(f.t==='edit'){const b=D.bands[v.id];b.parentId=val('f_parent')||null;b.note=val('f_note');const [g,s]=(val('f_place')||'|').split('|');if(!b.parentId){b.genreId=g||null;b.subId=s||null;b.also=(b.also||[]).filter(x=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null)));fixPrimary(b)}else{b.genreId=null;b.subId=null;b.also=[]}touch()}
   UI.form=null;render();
 }
