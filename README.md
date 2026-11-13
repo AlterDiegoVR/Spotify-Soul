@@ -1,4 +1,4 @@
-# Spotify Soul
+# SpotiSoul
 
 Tu música de Spotify ordenada como en carpetas: Género / Subgénero / Banda / Año - Disco.
 

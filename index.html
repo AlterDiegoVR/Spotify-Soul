@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0a0c0b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Spotify Soul</title>
+<title>SpotiSoul</title>
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
@@ -29,8 +29,9 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-
 .wrap{max-width:720px;margin:0 auto;padding-block:14px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
 header.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .brand{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:.02em;text-transform:uppercase;cursor:pointer;background:none;border:0;color:var(--fg);padding:0}
-.brand span{color:var(--accent)}
+.brand .nm{color:var(--fg)}.brand em{font-style:normal;color:var(--accent)}
 .brand{display:flex;align-items:center;gap:10px}
+.brand .ver{font-family:var(--mono);font-size:11px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted);align-self:flex-end;margin:0 0 6px -4px}
 .brand .logo{width:42px;height:42px;image-rendering:pixelated;flex:none}
 .dest{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 8px;border-radius:999px;background:var(--tab);color:var(--fg);border:1px solid var(--line)}
 .dest button{background:none;border:0;color:var(--muted);cursor:pointer;padding:0 2px;font-size:13px}
@@ -139,6 +140,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
+const APP_VER='1.0';
 (function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -224,7 +226,7 @@ async function pushRemote(){
   pushing=true;UI.syncState='Sincronizando…';renderSync();let changed=false;
   try{
     if(!cfg.gistId){
-      const snap=snapOf(D),body=JSON.stringify({description:'Spotify Soul (datos)',public:false,files:{[GIST_FILE]:{content:JSON.stringify(D)}}});const g=await gh('/gists',{method:'POST',body});
+      const snap=snapOf(D),body=JSON.stringify({description:'SpotiSoul (datos)',public:false,files:{[GIST_FILE]:{content:JSON.stringify(D)}}});const g=await gh('/gists',{method:'POST',body});
       cfg.gistId=g.id;LS.set('md_cfg',cfg);LS.set('md_base',snap);setDirty(false);
     }else if(LS.get('md_force',0)){
       const snap=snapOf(D),h0=hs(D);await writeGist(D);LS.set('md_base',snap);LS.del('md_force');setDirty(hs(D)!==h0);
@@ -266,10 +268,10 @@ async function applyCode(code){
   catch(e){say('No se pudo cargar la colección: '+e.message,true)}
   render();
 }
-const AI_PROMPT=(all)=>`INSTRUCCIONES PARA LA IA · Spotify Soul
+const AI_PROMPT=(all)=>`INSTRUCCIONES PARA LA IA · SpotiSoul
 (Pega este texto entero en Claude o en otro asistente de IA. Lleva todo lo necesario para que sepa qué hacer.)
 
-Eres un experto en música. Debajo hay un JSON exportado de Spotify Soul, una app para ordenar una colección musical en un árbol de géneros y subgéneros creado por el propio usuario.
+Eres un experto en música. Debajo hay un JSON exportado de SpotiSoul, una app para ordenar una colección musical en un árbol de géneros y subgéneros creado por el propio usuario.
 
 Qué contiene el JSON:
 - "generos": cada carpeta del árbol del usuario, con su "id" y su "ruta" completa (por ejemplo "METAL / HEAVY METAL / NWOBHM").
@@ -540,7 +542,7 @@ function bandRow(b,showPath){
   return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}</span><span class="meta">${esc(meta)}</span></button>`;
 }
 const TUT=[
- ['Bienvenido a Spotify Soul',()=>`<p>Ordena tu música de Spotify como tus carpetas de siempre: <b>Género / Subgénero / Banda / Año – Disco</b>. Tú decides el árbol; Spotify pone la música.</p>
+ ['Bienvenido a SpotiSoul',()=>`<p>Ordena tu música de Spotify como tus carpetas de siempre: <b>Género / Subgénero / Banda / Año – Disco</b>. Tú decides el árbol; Spotify pone la música.</p>
   <ul class="tl"><li><b>Importa</b> los artistas que sigues, tus álbumes guardados o tus listas.</li><li><b>Clasifica</b> cada banda en tus géneros, a mano o con ayuda de una IA.</li><li><b>Marca</b> discos: tu selección, estrellas, pendientes y formato (LP, CD…).</li><li><b>Redescubre</b>: ruleta de discos, bandas olvidadas, novedades y “hoy hace X años”.</li></ul>
   <p class="hint">Necesitas una cuenta de <b>Spotify Premium</b> (Spotify la exige para usar su API) y unos 10 minutos.</p>`],
  ['Conecta tu Spotify',()=>`<p>Cada persona usa su propia “app” de Spotify. Es gratis y se crea en un momento:</p>
@@ -551,7 +553,7 @@ const TUT=[
   <li>Abre la app que has creado, copia su <b>Client ID</b> y pégalo aquí:</li></ol>
   <form id="f_setup" class="btns"><input type="text" id="f_cid" value="${esc(cfg.clientId)}" placeholder="Client ID" autocomplete="off" style="flex:1;min-width:200px" required><button class="btn primary" type="submit">${tok?'Guardar':'Guardar y conectar'}</button></form>
   ${tok?'<p class="hint">Ya estás conectado.</p>':'<p class="hint">Spotify te pedirá permiso y volverás aquí.</p>'}
-  <div class="panel" style="margin-top:10px"><b>¿Ya usas Spotify Soul en otro dispositivo?</b><span class="hint">Pega el código que aparece en Ajustes → Sincronizar del otro dispositivo y tendrás aquí la misma colección.</span><form id="f_code" class="btns"><input type="text" id="f_codein" placeholder="Código" autocomplete="off" style="flex:1;min-width:200px"><button class="btn small" type="submit">Usar código</button></form></div>`],
+  <div class="panel" style="margin-top:10px"><b>¿Ya usas SpotiSoul en otro dispositivo?</b><span class="hint">Pega el código que aparece en Ajustes → Sincronizar del otro dispositivo y tendrás aquí la misma colección.</span><form id="f_code" class="btns"><input type="text" id="f_codein" placeholder="Código" autocomplete="off" style="flex:1;min-width:200px"><button class="btn small" type="submit">Usar código</button></form></div>`],
  ['Importa tu música',()=>`<p>En <b>Importar de Spotify</b> tienes tres opciones. Todo lo que entra va a <b>Sin clasificar</b> y no se duplica nada.</p>
   <ul class="tl"><li><b>Artistas que sigues</b>: la mejor forma de empezar. Además, cada día se añaden solos los que empieces a seguir.</li><li><b>Álbumes guardados</b>: los artistas de tus discos guardados.</li><li><b>Tus listas</b>: elige cuáles. <b>Ojo:</b> importar muchas listas largas de golpe gasta la cuota de Spotify y te bloquea unas horas. Mejor pocas cada vez.</li></ul>
   <p class="hint">Si quitas una banda de tu colección, no vuelve a entrar al importar.</p>
@@ -927,7 +929,7 @@ function vMakePlaylist(){
   h+=`<span class="hint">${pool.length} disco${pool.length===1?'':'s'}${pool.length>cap?`; se usarán los ${cap} primeros para no gastar demasiada cuota de Spotify`:''}. Solo cuentan las bandas con la discografía ya cargada.</span>`;
   if(UI.plJob)return h+`<div class="notice">${esc(UI.plJob)}</div>`;
   if(UI.plDone)h+=`<div class="notice">Lista creada. <a class="btn small spot" href="${esc(UI.plDone)}" target="_blank" rel="noopener">Abrir en Spotify</a></div>`;
-  h+=`<form id="f_pl" class="panel"><label>Nombre de la lista<input type="text" id="f_plname" value="${esc(v.name||('Spotify Soul · '+rname))}"></label><div class="btns"><button class="btn primary" type="submit" ${pool.length?'':'disabled'}>Crear lista privada</button></div></form>`;
+  h+=`<form id="f_pl" class="panel"><label>Nombre de la lista<input type="text" id="f_plname" value="${esc(v.name||('SpotiSoul · '+rname))}"></label><div class="btns"><button class="btn primary" type="submit" ${pool.length?'':'disabled'}>Crear lista privada</button></div></form>`;
   return h}
 async function makePlaylist(name){
   const v=UI.view,pool=plPool(v.place,v.src||'sel',v.min||4).slice(0,50),mode=v.mode||'one';if(!pool.length)return;
@@ -938,7 +940,7 @@ async function makePlaylist(name){
       const us=tr.map(t=>t&&t.uri).filter(Boolean);if(!us.length)continue;
       if(mode==='full')uris.push(...us);else uris.push(us[Math.floor(Math.random()*us.length)])}
     UI.plJob='Creando la lista…';render();
-    const pl=await spPost('/me/playlists',{name:name||'Spotify Soul',description:'Creada con Spotify Soul',public:false});
+    const pl=await spPost('/me/playlists',{name:name||'SpotiSoul',description:'Creada con SpotiSoul',public:false});
     for(let k=0;k<uris.length;k+=100){UI.plJob=`Añadiendo canciones… ${Math.min(k+100,uris.length)}/${uris.length}`;render();await spPost(`/playlists/${pl.id}/items`,{uris:uris.slice(k,k+100)})}
     UI.plDone=(pl.external_urls&&pl.external_urls.spotify)||('https://open.spotify.com/playlist/'+pl.id);
     say(`Lista creada con ${uris.length} canciones.`);
@@ -1182,7 +1184,7 @@ app.addEventListener('click',async e=>{
 app.addEventListener('change',e=>{
   if(e.target.dataset.sel){e.target.checked?UI.sel.add(e.target.dataset.sel):UI.sel.delete(e.target.dataset.sel);const m=document.querySelector('.bar .meta');if(m)m.textContent=UI.sel.size+' marcadas';document.querySelectorAll('[data-act="moveSel"],[data-act="addSel"],[data-act="delSel"]').forEach(btn=>btn.disabled=!UI.sel.size)}
   if(e.target.dataset.pl){const p=UI.playlists.find(x=>x.id===e.target.dataset.pl);if(p)p.on=e.target.checked}
-  if(e.target.id==='f_restore'){const f=e.target.files&&e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{try{const o=JSON.parse(fr.result);if(!o||!o.bands||!o.tree)throw 0;UI.restore=o;render()}catch(_){say('Ese archivo no es una copia de Spotify Soul.',true)}};fr.readAsText(f);e.target.value='';return}
+  if(e.target.id==='f_restore'){const f=e.target.files&&e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{try{const o=JSON.parse(fr.result);if(!o||!o.bands||!o.tree)throw 0;UI.restore=o;render()}catch(_){say('Ese archivo no es una copia de SpotiSoul.',true)}};fr.readAsText(f);e.target.value='';return}
   if(e.target.id==='f_mb'){cfg.autoMB=e.target.checked;LS.set('md_cfg',cfg);if(cfg.autoMB)mbLoader();return}
   if(e.target.id==='f_photos'){cfg.dzPhotos=e.target.checked;LS.set('md_cfg',cfg);if(cfg.dzPhotos)photoLoader();return}
   if(e.target.id==='f_auto'){cfg.autoImport=e.target.checked;LS.set('md_cfg',cfg);return}
@@ -1212,12 +1214,12 @@ function renderInner(){
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
   if(UI.undo)notes+=`<div class="notice">${UI.undo.bands.length===1?`“${esc(UI.undo.bands[0].name)}” quitada de tu colección.`:`${UI.undo.bands.length} bandas quitadas de tu colección.`} <button class="btn small" data-act="undo">Deshacer</button></div>`;
   const n=bands().length;
-  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt="">Spotify <span>Soul</span></button><div class="btns"><button class="sync${UI.syncState==='Sin sincronizar'?' bad':''}" id="syncst" data-act="syncInfo" title="${esc(UI.syncErr||'')}">${esc(UI.syncState)}</button>${cfg.clientId?`<button class="btn small" data-act="tutorial" aria-label="Ayuda y tutorial" title="Ayuda">?</button><button class="btn small" data-act="settings">Ajustes</button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
+  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt=""><span class="nm">Spoti<em>Soul</em></span><small class="ver">v${APP_VER}</small></button><div class="btns"><button class="sync${UI.syncState==='Sin sincronizar'?' bad':''}" id="syncst" data-act="syncInfo" title="${esc(UI.syncErr||'')}">${esc(UI.syncState)}</button>${cfg.clientId?`<button class="btn small" data-act="tutorial" aria-label="Ayuda y tutorial" title="Ayuda">?</button><button class="btn small" data-act="settings">Ajustes</button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
   for(const id in keep){const el=document.getElementById(id);if(el&&el.type!=='checkbox')el.value=keep[id]}
 }
 
 /* ================= arranque ================= */
-function showFatal(e){console.error(e);app.innerHTML=`<header class="top"><button class="brand" onclick="location.reload()">Spotify <span>Soul</span></button></header><div class="notice err"><b>Algo ha fallado al mostrar la colección.</b> Copia este mensaje y pásaselo a Claude:<br><code>${esc((e&&e.message)||e)}</code><br><code>${esc(((e&&e.stack)||'').split('\n').slice(0,3).join(' | '))}</code></div><div class="btns"><button class="btn" onclick="location.reload()">Recargar</button></div>`}
+function showFatal(e){console.error(e);app.innerHTML=`<header class="top"><button class="brand" onclick="location.reload()"><span class="nm">Spoti<em>Soul</em></span></button></header><div class="notice err"><b>Algo ha fallado al mostrar la colección.</b> Copia este mensaje y pásaselo a Claude:<br><code>${esc((e&&e.message)||e)}</code><br><code>${esc(((e&&e.stack)||'').split('\n').slice(0,3).join(' | '))}</code></div><div class="btns"><button class="btn" onclick="location.reload()">Recargar</button></div>`}
 window.addEventListener('error',ev=>{if(!app.querySelector('header'))showFatal(ev.error||ev.message)});
 window.addEventListener('unhandledrejection',ev=>{if(!app.querySelector('header'))showFatal(ev.reason)});
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(_){}
