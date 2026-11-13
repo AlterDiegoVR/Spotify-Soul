@@ -915,9 +915,9 @@ function vBand(){
   }
   if(hidden.size)h+=`<button class="btn small" data-act="unhide" style="align-self:flex-start">Recuperar ${hidden.size} oculto${hidden.size===1?'':'s'}</button>`;
   h+=`</div>`;
-  const rel=children(b.id);
-  h+=`<div class="section"><h2>Relacionados · ${rel.length}</h2><span class="hint">Discos en solitario, la banda que formaron después, nombres anteriores…</span>`;
-  if(rel.length)h+=`<div class="list">${rel.map(r=>`<button class="row" data-go="${J({k:'band',id:r.id})}">${thumb(r.img)}<span class="name">${esc(r.name)}${r.note?`<span class="sub">${esc(r.note)}</span>`:''}</span><span class="meta">${r.fetchedAt?(r.albums||[]).filter(a=>a.type==='album').length+' discos':''}</span></button>`).join('')}</div>`;
+  const parR=b.parentId&&D.bands[b.parentId],rel=children(b.id);
+  h+=`<div class="section"><h2>Relacionados · ${rel.length+(parR?1:0)}</h2><span class="hint">Discos en solitario, la banda que formaron después, nombres anteriores…</span>`;
+  if(rel.length||parR)h+=`<div class="list">${parR?`<button class="row" data-go="${J({k:'band',id:parR.id})}">${thumb(parR.img)}<span class="name">${esc(parR.name)}</span><span class="meta">banda principal</span></button>`:''}${rel.map(r=>`<button class="row" data-go="${J({k:'band',id:r.id})}">${thumb(r.img)}<span class="name">${esc(r.name)}${r.note?`<span class="sub">${esc(r.note)}</span>`:''}</span><span class="meta">${r.fetchedAt?(r.albums||[]).filter(a=>a.type==='album').length+' discos':''}</span></button>`).join('')}</div>`;
   h+=`<div class="btns"><button class="btn" data-act="addRelated">+ Relacionado</button></div></div>`;
   const sim=b.sid?UI.sim[b.sid]:null,haveN=new Set(bands().map(x=>norm(x.name))),simF=Array.isArray(sim)?sim.filter(a=>!bandBySid(a.id)&&!haveN.has(norm(a.name))):[];
   if(b.sid&&tok){
