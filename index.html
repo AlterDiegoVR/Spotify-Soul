@@ -1109,7 +1109,7 @@ function formHtml(){
       <div class="btns">${placeSelect('f_also','','','Añadir otra rama…')}<button type="button" class="btn small" data-act="addAlso">Añadir</button></div></div></div>
       <label>Es relacionado de<select id="f_parent">${parents}</select></label>
       <label>Nota corta<input type="text" id="f_note" value="${esc(b.note||'')}" placeholder="p. ej. antes se llamaban…"></label>
-      <label>Enlace de Rate Your Music<input type="url" id="f_rym" value="${esc(b.rym||'')}" placeholder="https://rateyourmusic.com/artist/${esc(rymSlug(b.name))}"></label><span class="hint">Solo si el botón de Rate Your Music abre una ficha equivocada: pega aquí la dirección correcta. Vacío = la automática.</span>
+      <label>Enlace de Rate Your Music<input type="url" id="f_rym" value="${esc(b.rym||'')}" placeholder="https://rateyourmusic.com/artist/${esc(rymSlug(b.name))}"></label><span class="hint">Si el botón abre una ficha equivocada, pega aquí la correcta. Si la banda no está en Rate Your Music, puedes poner cualquier otra web (Metal Archives, Wikipedia, Bandcamp…). Vacío = la automática.</span>
       <button class="btn danger small" type="button" data-act="askDelBand" style="align-self:flex-start">Quitar de mi colección</button>`,'Guardar');
   }
   return '';
@@ -1129,7 +1129,7 @@ async function submitForm(id){
   else if(f.t==='renameSub'){const n=val('f_name');if(!n)return;SG(G(v.g),v.s).name=n;touch()}
   else if(f.t==='spsearch'){f.q=val('f_sq');if(!f.q)return;try{UI.spResults=(await sp('/search?type=artist&limit=10&q='+encodeURIComponent(f.q))).artists.items}catch(e){say(e.message==='nologin'?'Conecta Spotify en Ajustes.':e.message,true)}render();return}
   else if(f.t==='year'){const b=D.bands[f.b||v.id],al=(b.albums||[]).find(x=>x.id===f.a),y=val('f_y');if(y&&!/^\d{4}$/.test(y)){say('Escribe el año con cuatro cifras, por ejemplo 1983.',true);return}b.years=b.years||{};const auto=al?((al.md||'').slice(0,4)||al.y||''):'';if(!y||y===auto)delete b.years[f.a];else b.years[f.a]=y;touch()}
-  else if(f.t==='edit'){const b=D.bands[v.id];b.parentId=val('f_parent')||null;b.note=val('f_note');{const r=val('f_rym');if(r&&!/^https?:\/\/(www\.)?rateyourmusic\.com\//i.test(r)){say('Pega una dirección de rateyourmusic.com.',true);return}if(r)b.rym=r;else delete b.rym}const [g,s]=(val('f_place')||'|').split('|');b.genreId=g||null;b.subId=s||null;b.also=(b.also||[]).filter(x=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null)));fixPrimary(b);touch()}
+  else if(f.t==='edit'){const b=D.bands[v.id];b.parentId=val('f_parent')||null;b.note=val('f_note');{const r=val('f_rym');if(r&&!/^https?:\/\/\S+$/i.test(r)){say('Pega una dirección web completa (que empiece por https://).',true);return}if(r)b.rym=r;else delete b.rym}const [g,s]=(val('f_place')||'|').split('|');b.genreId=g||null;b.subId=s||null;b.also=(b.also||[]).filter(x=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null)));fixPrimary(b);touch()}
   UI.form=null;render();
 }
 
