@@ -1221,7 +1221,7 @@ app.addEventListener('click',async e=>{
       catch(e){say(spErr(e),true)}UI.busy=null;render();break}
     case'selAll':{const l=UI.selIds||[];if(l.every(id=>UI.sel.has(id)))UI.sel.clear();else l.forEach(id=>UI.sel.add(id));render();break}
     case'rmAlso':{const b=D.bands[v.id];b.also.splice(+a.dataset.i,1);touch();render();break}
-    case'addAlso':{const b=D.bands[v.id],[gg,ss]=(document.getElementById('f_also').value||'|').split('|');if(!gg)return;if(!addAlso(b,gg,ss))say('Ya está en esa rama.',true);touch();render();break}
+    case'addAlso':{const b=D.bands[v.id],[gg,ss]=(document.getElementById('f_also').value||'|').split('|');if(!gg)return;if(!addAlso(b,gg,ss))say('Ya está en esa rama.',true);touch();render();const fp=document.getElementById('f_place');if(fp)fp.value=(b.genreId||'')+'|'+(b.subId||'');if(fp&&fp.selectedIndex<0)fp.value='';break}
     case'selMode':UI.selMode?exitSel():enterSel(null);break;
     case'askDel':UI.confirmDel=true;render();break;
     case'noDel':UI.confirmDel=false;render();break;
