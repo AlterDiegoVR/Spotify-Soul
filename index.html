@@ -441,17 +441,21 @@ function fixData(){
   const seen=new Set();for(const b of Object.values(D.bands)){let x=b,n=0;seen.clear();while(x&&x.parentId){if(seen.has(x.id)||n++>20){x.parentId=null;break}seen.add(x.id);x=D.bands[x.parentId]}}
 }
 function fixTree(){fixData();if(!D.tree||!Array.isArray(D.tree.genres))D.tree={genres:[]};for(const g of D.tree.genres){if(!Array.isArray(g.subs))g.subs=[];walk(g.subs,x=>{if(!Array.isArray(x.subs))x.subs=[]})}}
-function places(b){const r=rootOf(b),out=[];if(G(r.genreId))out.push({g:r.genreId,s:r.subId||null});for(const x of r.also||[])if(G(x.g)&&!out.some(o=>o.g===x.g&&o.s===(x.s||null)))out.push({g:x.g,s:x.s||null});return out}
+function ownPlaces(b){const out=[];if(G(b.genreId))out.push({g:b.genreId,s:b.subId||null});for(const x of b.also||[])if(G(x.g)&&!out.some(o=>o.g===x.g&&o.s===(x.s||null)))out.push({g:x.g,s:x.s||null});return out}
+// Una relacionada hereda la ubicación de su banda principal y, si se la pones, tiene además la suya propia.
+// En los listados de géneros (LISTING) una relacionada solo aparece suelta en sus ubicaciones propias.
+let LISTING=false;
+function places(b){if(!b.parentId)return ownPlaces(b);const own=ownPlaces(b);if(LISTING)return own;const out=ownPlaces(rootOf(b));for(const p of own)if(!out.some(o=>o.g===p.g&&o.s===p.s))out.push(p);return out}
 const inPlace=(b,gid,sid)=>places(b).some(p=>p.g===gid&&p.s===(sid||null));
 const pName=p=>{const g=G(p.g);return g?[g.name,...subPath(g,p.s).map(x=>x.name)].join(' / '):''};
 function addAlso(b,g,s){s=s||null;if(!b.genreId){b.genreId=g;b.subId=s;return true}if((b.genreId===g&&(b.subId||null)===s)||(b.also||[]).some(x=>x.g===g&&(x.s||null)===s))return false;b.also=(b.also||[]).concat({g,s});return true}
 function fixPrimary(b){b.also=(b.also||[]).filter(x=>G(x.g));if(!G(b.genreId)&&b.also.length){const f=b.also.shift();b.genreId=f.g;b.subId=f.s}}
-function placeName(b){const r=rootOf(b),g=G(r.genreId);return g?[g.name,...subPath(g,r.subId).map(x=>x.name)].join(' / '):''}
+function placeName(b){const r=b.parentId&&G(b.genreId)?b:rootOf(b),g=G(r.genreId);return g?[g.name,...subPath(g,r.subId).map(x=>x.name)].join(' / '):''}
 const bands=()=>Object.values(D.bands);
 const children=id=>bands().filter(b=>b.parentId===id).sort(byName);
 function rootOf(b){let x=b,n=0;while(x&&x.parentId&&D.bands[x.parentId]&&n++<10)x=D.bands[x.parentId];return x}
 function placeOf(b){const r=rootOf(b);const g=G(r.genreId);return{g,s:SG(g,r.subId)}}
-const topBands=f=>bands().filter(b=>!b.parentId&&f(b)).sort(byName);
+const topBands=f=>{LISTING=true;try{return bands().filter(b=>(!b.parentId||ownPlaces(b).length)&&f(b)).sort(byName)}finally{LISTING=false}};
 function countIn(gid,sid){
   if(sid!==undefined){const f=findAny(sid);const ids=f?shareIds(f.s):new Set([sid]);return bands().filter(b=>places(b).some(p=>ids.has(p.s))).length}
   const g=G(gid),ids=new Set();if(g)for(const x of g.subs)shareIds(x).forEach(i=>ids.add(i));
@@ -562,7 +566,7 @@ function albumRow(b,a,o={}){
 function bandRow(b,showPath){
   if(!b.img&&b.sid)UI.visible.add(b.id);
   const n=(b.albums||[]).filter(a=>a.type==='album').length,pk=(b.picked||[]).length,rel=children(b.id).length,pl=placeOf(b);
-  const meta=showPath?((placeName(b)||'sin clasificar')+(places(b).length>1?` +${places(b).length-1}`:'')):(b.fetchedAt?(pk?`${pk} de ${n} discos`:`${n} disco${n===1?'':'s'}`):'')+(rel?` · ${rel} rel.`:'');
+  const par=b.parentId&&D.bands[b.parentId],meta=showPath?((placeName(b)||'sin clasificar')+(places(b).length>1?` +${places(b).length-1}`:'')):(par?`rel. de ${par.name}`:(b.fetchedAt?(pk?`${pk} de ${n} discos`:`${n} disco${n===1?'':'s'}`):'')+(rel?` · ${rel} rel.`:''));
   return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}</span><span class="meta">${esc(meta)}</span></button>`;
 }
 const TUT=[
@@ -882,6 +886,7 @@ function vBand(){
   chain.forEach(c=>parts.push({t:c.name,v:{k:'band',id:c.id}}));parts.push({t:b.name});
   let h=crumbs(parts)+`<div class="hero">${b.img?`<img src="${esc(b.img)}" alt="">`:''}<div class="in"><h1>${esc(b.name)}</h1>${b.note?`<span class="hint">${esc(b.note)}</span>`:''}${(b.spGenres||[]).length?`<div class="tags">${b.spGenres.slice(0,6).map(g=>`<span class="tag">${esc(g)}</span>`).join('')}</div>`:''}</div></div>`;
   h+=`<div class="btns">${b.sid?`<a class="btn spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener">Abrir en Spotify</a>`:''}<a class="btn" href="${esc(b.rym||'https://rateyourmusic.com/artist/'+rymSlug(b.name))}" target="_blank" rel="noopener">Rate Your Music ↗</a><button class="btn${b.fav?' favon':''}" data-act="favBand" aria-pressed="${!!b.fav}">${b.fav?'♥ Favorita':'♡ Favorita'}</button><button class="btn" data-act="editBand">Mover / editar</button>${b.src==='mb'||(b.sid&&tok)?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:''}${b.src==='mb'&&b.sid&&tok?`<button class="btn small" data-act="useSpotify">Usar discografía de Spotify</button>`:''}</div>`;
+  const ownP=b.parentId?ownPlaces(b):[];if(ownP.length)h+=`<div class="btns"><span class="hint">Sus géneros:</span>${ownP.map(p=>`<button class="btn small" data-go="${J(p.s?{k:'sub',g:p.g,s:p.s}:{k:'genre',g:p.g})}">${esc(pName(p))}</button>`).join('')}</div>`;
   if(others.length&&!b.parentId)h+=`<div class="btns"><span class="hint">También en:</span>${others.map(p=>`<button class="btn small" data-go="${J(p.s?{k:'sub',g:p.g,s:p.s}:{k:'genre',g:p.g})}">${esc(pName(p))}</button>`).join('')}</div>`;
   if(UI.form)h+=formHtml();if(UI.confirm)h+=confirmHtml();
   if(UI.busy)h+=`<div class="notice">${esc(UI.busy)}</div>`;
@@ -1098,7 +1103,8 @@ function formHtml(){
     const b=D.bands[UI.view.id];
     const banned=new Set([b.id]);let grew=true;while(grew){grew=false;for(const x of bands())if(x.parentId&&banned.has(x.parentId)&&!banned.has(x.id)){banned.add(x.id);grew=true}}
     const parents=`<option value="">— Ninguna (banda principal) —</option>`+bands().filter(x=>!banned.has(x.id)).sort(byName).map(x=>`<option value="${x.id}" ${b.parentId===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
-    return wrap('Mover / editar',`<div id="placeLbl" ${b.parentId?'hidden':''} style="display:flex;flex-direction:column;gap:10px"><label>Ubicación principal${placeSelect('f_place',b.genreId,b.subId)}</label>
+    const parB=b.parentId&&D.bands[b.parentId];
+    return wrap('Mover / editar',`<div id="placeLbl" style="display:flex;flex-direction:column;gap:10px">${parB?`<span class="hint">Como relacionada de ${esc(parB.name)} ya está en su rama. Si además quieres que tenga sus propios géneros, elígelos aquí.</span>`:''}<label>${parB?'Ubicación propia (opcional)':'Ubicación principal'}${placeSelect('f_place',b.genreId,b.subId,parB?'— Solo la de '+parB.name+' —':'')}</label>
       <div class="section"><span class="hint">También en</span>${(b.also||[]).filter(x=>G(x.g)).length?`<div class="tags">${(b.also||[]).map((x,i)=>G(x.g)?`<button type="button" class="btn small" data-act="rmAlso" data-i="${i}">${esc(pName({g:x.g,s:x.s||null}))} ✕</button>`:'').join('')}</div>`:''}
       <div class="btns">${placeSelect('f_also','','','Añadir otra rama…')}<button type="button" class="btn small" data-act="addAlso">Añadir</button></div></div></div>
       <label>Es relacionado de<select id="f_parent">${parents}</select></label>
@@ -1123,7 +1129,7 @@ async function submitForm(id){
   else if(f.t==='renameSub'){const n=val('f_name');if(!n)return;SG(G(v.g),v.s).name=n;touch()}
   else if(f.t==='spsearch'){f.q=val('f_sq');if(!f.q)return;try{UI.spResults=(await sp('/search?type=artist&limit=10&q='+encodeURIComponent(f.q))).artists.items}catch(e){say(e.message==='nologin'?'Conecta Spotify en Ajustes.':e.message,true)}render();return}
   else if(f.t==='year'){const b=D.bands[f.b||v.id],al=(b.albums||[]).find(x=>x.id===f.a),y=val('f_y');if(y&&!/^\d{4}$/.test(y)){say('Escribe el año con cuatro cifras, por ejemplo 1983.',true);return}b.years=b.years||{};const auto=al?((al.md||'').slice(0,4)||al.y||''):'';if(!y||y===auto)delete b.years[f.a];else b.years[f.a]=y;touch()}
-  else if(f.t==='edit'){const b=D.bands[v.id];b.parentId=val('f_parent')||null;b.note=val('f_note');{const r=val('f_rym');if(r&&!/^https?:\/\/(www\.)?rateyourmusic\.com\//i.test(r)){say('Pega una dirección de rateyourmusic.com.',true);return}if(r)b.rym=r;else delete b.rym}const [g,s]=(val('f_place')||'|').split('|');if(!b.parentId){b.genreId=g||null;b.subId=s||null;b.also=(b.also||[]).filter(x=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null)));fixPrimary(b)}else{b.genreId=null;b.subId=null;b.also=[]}touch()}
+  else if(f.t==='edit'){const b=D.bands[v.id];b.parentId=val('f_parent')||null;b.note=val('f_note');{const r=val('f_rym');if(r&&!/^https?:\/\/(www\.)?rateyourmusic\.com\//i.test(r)){say('Pega una dirección de rateyourmusic.com.',true);return}if(r)b.rym=r;else delete b.rym}const [g,s]=(val('f_place')||'|').split('|');b.genreId=g||null;b.subId=s||null;b.also=(b.also||[]).filter(x=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null)));fixPrimary(b);touch()}
   UI.form=null;render();
 }
 
@@ -1266,7 +1272,6 @@ app.addEventListener('change',e=>{
   if(e.target.id==='f_alyear'){const y=e.target.value.trim();if(!y||/^\d{4}$/.test(y)){UI.view={...UI.view,year:y};render()}return}
   if(e.target.id==='f_alplace'||e.target.id==='f_roplace'){UI.view={...UI.view,place:e.target.value};UI.rPick=null;render();return}
   if(e.target.id==='f_rtplace'){UI.view={...UI.view,place:e.target.value};render();return}
-  if(e.target.id==='f_parent'){const l=document.getElementById('placeLbl');if(l)l.hidden=!!e.target.value}
 });
 app.addEventListener('submit',e=>{e.preventDefault();submitForm(e.target.id)});
 app.addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;const pos=e.target.selectionStart;render();const q=document.getElementById('q');if(q){q.focus();try{q.setSelectionRange(pos,pos)}catch(_){}}}});
