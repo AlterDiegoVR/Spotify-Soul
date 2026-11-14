@@ -63,6 +63,7 @@ button.row:hover,a.row:hover{background:var(--tab)}
 img.flag{width:auto!important;height:11px!important;min-width:0!important;flex:none!important;object-fit:contain;border-radius:2px!important}
 .ccline img.flag{height:12px!important}
 .flag.txt{height:auto;font-family:var(--mono);font-size:10px;padding:0 3px;color:var(--muted);box-shadow:0 0 0 1px var(--line)}
+.flag.unk{height:auto;font-size:12px;line-height:1;box-shadow:none}
 .flag.globe{height:auto;box-shadow:none;color:var(--muted)}.flag.globe svg{width:13px;height:13px;vertical-align:-2px}
 .ccline{font-size:13px;color:var(--muted)}.ccline .flag{margin:0 2px 0 0;height:12px}
 .ccf{margin-bottom:0}
@@ -155,7 +156,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0N';
+const APP_VER='1.0O';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -613,7 +614,7 @@ function albumRow(b,a,o={}){
 }
 /* ================= países y banderas ================= */
 const CC_ALL='AF AX AL DZ AS AD AO AI AQ AG AR AM AW AU AT AZ BS BH BD BB BY BE BZ BJ BM BT BO BQ BA BW BR IO BN BG BF BI CV KH CM CA KY CF TD CL CN CX CC CO KM CG CD CK CR CI HR CU CW CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FK FO FJ FI FR GF PF GA GM GE DE GH GI GR GL GD GP GU GT GG GN GW GY HT VA HN HK HU IS IN ID IR IQ IE IM IL IT JM JP JE JO KZ KE KI KP KR KW KG LA LV LB LS LR LY LI LT LU MO MG MW MY MV ML MT MH MQ MR MU YT MX FM MD MC MN ME MS MA MZ MM NA NR NP NL NC NZ NI NE NG NU NF MK MP NO OM PK PW PS PA PG PY PE PH PN PL PT PR QA RE RO RU RW BL SH KN LC MF PM VC WS SM ST SA SN RS SC SL SG SX SK SI SB SO ZA GS SS ES LK SD SR SJ SE CH SY TW TJ TZ TH TL TG TK TO TT TN TR TM TC TV UG UA AE GB US UY UZ VU VE VN VG VI WF EH YE ZM ZW XK'.split(' ');
-const CC_HIST={SU:'Unión Soviética',YU:'Yugoslavia',CS:'Checoslovaquia',DD:'Alemania del Este',XW:'Internacional',XE:'Europa'};
+const CC_HIST={SU:'Unión Soviética',YU:'Yugoslavia',CS:'Checoslovaquia',DD:'Alemania del Este',XW:'Internacional',XE:'Europa',XX:'Desconocido'};
 let regionNames=null;try{regionNames=new Intl.DisplayNames(['es'],{type:'region'})}catch(_){}
 const ccName=c=>CC_HIST[c]||(()=>{try{return regionNames.of(c)}catch(_){return c}})()||c;
 const ccOf=b=>Array.isArray(b.cc)?b.cc:(b.mbCountry?[b.mbCountry]:[]);
@@ -622,12 +623,13 @@ const GLOBE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 const ccFold=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 function ccSuggest(q,b){const have=new Set(ccOf(b||{})),f=ccFold(q.trim());let list;
   if(!f){const cnt=new Map();for(const x of bands())for(const c of ccOf(x))cnt.set(c,(cnt.get(c)||0)+1);list=[...cnt].sort((a,b)=>b[1]-a[1]).map(x=>x[0]).slice(0,8)}
-  else{const all=['XW','XE',...CC_ALL].map(c=>({c,n:ccFold(ccName(c))}));
-    list=all.filter(x=>x.n.startsWith(f)||x.c.toLowerCase()===f).concat(all.filter(x=>!x.n.startsWith(f)&&x.c.toLowerCase()!==f&&x.n.includes(f))).map(x=>x.c).slice(0,10)}
+  else{const all=['XX','XW','XE',...CC_ALL].map(c=>({c,n:ccFold(ccName(c))}));
+    list=all.filter(x=>x.n.startsWith(f)||x.c.toLowerCase()===f||(f==='?'&&x.c==='XX')).concat(all.filter(x=>!x.n.startsWith(f)&&x.c.toLowerCase()!==f&&x.n.includes(f))).map(x=>x.c).slice(0,10)}
   list=list.filter(c=>!have.has(c));
   return list.length?(f?'':'<span class="hint">Más usados:</span>')+list.map(c=>`<button type="button" class="btn small" data-act="ccAdd" data-c="${c}">${flag(c)} ${esc(ccName(c))}</button>`).join(''):(f?'<span class="hint">Ningún país con ese nombre.</span>':'')}
 function flag(c){
   if(c==='XW')return `<span class="flag globe" title="Internacional">${GLOBE}</span>`;
+  if(c==='XX')return `<span class="flag unk" title="Desconocido">❓</span>`;
   const f=c==='XE'?'eu':(CC_HIST[c]?null:c.toLowerCase());
   if(!f)return `<span class="flag txt" title="${esc(ccName(c))}">${esc(c)}</span>`;
   return `<img class="flag" src="https://flagcdn.com/w40/${f}.png" alt="${esc(c)}" title="${esc(ccName(c))}" loading="lazy">`}
