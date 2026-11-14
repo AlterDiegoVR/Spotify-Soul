@@ -157,7 +157,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0P';
+const APP_VER='1.0Q';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -1335,7 +1335,7 @@ app.addEventListener('click',async e=>{
     const w=window.open(url,'_blank');if(w)w.opener=null;else location.href=url;bgRender();return}
   const a=e.target.closest('[data-act]');if(!a||a.disabled)return;
   const act=a.dataset.act,v=UI.view;
-  const open=f=>{UI.form=f;UI.confirm=null;UI.spResults=null;render();setTimeout(()=>{const el=document.querySelector('#frm input');el&&el.focus()},0)};
+  const open=f=>{UI.form=f;UI.confirm=null;UI.spResults=null;render();setTimeout(()=>{const el=document.querySelector('#frm input');if(el&&f.t!=='edit'&&!el.classList.contains('ssq'))el.focus()},0)};
   switch(act){
     case'home':go({k:'home'});break;
     case'settings':go({k:'settings'});break;
