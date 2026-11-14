@@ -147,7 +147,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0E';
+const APP_VER='1.0F';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -561,6 +561,7 @@ function go(v,fromHistory){
   if(!fromHistory){try{const cur=history.state&&history.state.v;if(JSON.stringify(cur)!==JSON.stringify(v))history.pushState({v},'')}catch(_){}}
   if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];if(!fromHistory){b.lastOpened=Date.now();touch()}if(b.fetchedAt&&Date.now()-b.fetchedAt<=90*864e5)setTimeout(()=>{if(UI.view.k==='band'&&UI.view.id===b.id)spPhoto(b)},4000);
     if(b.sid&&b.fetchedAt&&!b.mbDates)mbSync(b).then(ok=>{if(ok&&UI.view.k==='band'&&UI.view.id===b.id)render()}).catch(()=>{});
+    if(cfg.autoMB!==false&&ccNeed(b))ccOne(b).then(()=>{touch();if(UI.view.k==='band'&&UI.view.id===b.id)bgRender()}).catch(()=>{});
     const useMB=cfg.autoMB!==false&&(!b.fetchedAt?!(b.mbNone&&Date.now()-b.mbNone<7*864e5):b.src==='mb');
     if(useMB&&(!b.fetchedAt||Date.now()-b.fetchedAt>90*864e5)){if(!b.fetchedAt)UI.busy='Cargando discografía de MusicBrainz…';
       mbDisco(b).then(ok=>{UI.busy=null;if(UI.view.k==='band'&&UI.view.id===b.id)bgRender()}).catch(()=>{UI.busy=null;if(!b.fetchedAt){b.mbNone=Date.now();say('MusicBrainz no responde ahora mismo. Puedes cargar la discografía desde Spotify.',true)}bgRender()})}
@@ -622,17 +623,28 @@ function ccFilter(list){
   const opts=[...cnt].sort((a,b)=>b[1]-a[1]||ccName(a[0]).localeCompare(ccName(b[0]),'es')).map(([c,n])=>`<option value="${c}" ${v===c?'selected':''}>${esc(ccName(c))} (${n})</option>`).join('');
   const out=!v?list:v==='--'?list.filter(b=>!ccOf(b).length):list.filter(b=>ccOf(b).includes(v));
   return {html:`<label class="ccf">País<select id="f_ccf"><option value="">Todos los países (${list.length})</option>${opts}${none?`<option value="--" ${v==='--'?'selected':''}>Sin país (${none})</option>`:''}</select></label>`,list:out}}
-let ccRunning=false;
+let ccRunning=false;const ccBusy=new Set();
+const ccNeed=b=>!Array.isArray(b.cc)&&(b.mbCountry===undefined||(b.mbCountry===''&&(!b.ccAt||Date.now()-b.ccAt>90*864e5)));
+async function ccOne(b){if(ccBusy.has(b.id))return;ccBusy.add(b.id);
+  try{const id=await mbResolve(b);let c='';
+    if(id){const ar=await mbGet('/artist/'+id);if(ar){c=ar.country||'';if(!c&&ar.area&&(ar.area['iso-3166-1-codes']||[]).length)c=ar.area['iso-3166-1-codes'][0]}}
+    b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now()}finally{ccBusy.delete(b.id)}}
+// rellena el país de todas las bandas por detrás mientras la app está abierta (MusicBrainz, sin gastar Spotify)
 async function ccLoader(){
   if(ccRunning||cfg.autoMB===false)return;ccRunning=true;
   try{let n=0;
-    const need=b=>b.mbCountry===undefined||(b.mbCountry===''&&(!b.ccAt||Date.now()-b.ccAt>90*864e5));
-    const order=bands().filter(need).sort((a,b)=>(UI.visible.has(b.id)-UI.visible.has(a.id))||((b.fav?1:0)-(a.fav?1:0))||((places(b).length?1:0)-(places(a).length?1:0)));
-    for(const b of order){if(n>=500)break;if(!need(b))continue;
-      try{const id=await mbResolve(b);let c='';
-        if(id){const ar=await mbGet('/artist/'+id);if(ar){c=ar.country||'';if(!c&&ar.area&&(ar.area['iso-3166-1-codes']||[]).length)c=ar.area['iso-3166-1-codes'][0]}}
-        b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now();n++;
-        if(n%20===0){touch();bgRender()}}
+    const order=bands().filter(ccNeed).sort((a,b)=>(UI.visible.has(b.id)-UI.visible.has(a.id))||((b.fav?1:0)-(a.fav?1:0))||((places(b).length?1:0)-(places(a).length?1:0)));
+    // las que ya tienen identificador de MusicBrainz: de 40 en 40 en una sola consulta
+    const withId=order.filter(b=>b.mbid);
+    for(let i=0;i<withId.length;i+=40){const chunk=withId.slice(i,i+40);
+      try{const r=await mbGet('/artist?limit=100&query='+encodeURIComponent('arid:('+chunk.map(b=>b.mbid).join(' OR ')+')'));
+        const by=new Map(((r&&r.artists)||[]).map(x=>[x.id,x]));
+        for(const b of chunk){const x=by.get(b.mbid);if(!x)continue;const c=x.country||'';b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now();n++}
+        touch();bgRender()}
+      catch(e){if(e.message==='mbdown')return}}
+    for(const b of order){if(!ccNeed(b))continue;
+      if(document.visibilityState==='hidden'){await new Promise(r=>{const f=()=>{if(document.visibilityState==='visible'){document.removeEventListener('visibilitychange',f);r()}};document.addEventListener('visibilitychange',f)})}
+      try{await ccOne(b);n++;if(n%10===0){touch();bgRender()}}
       catch(e){if(e.message==='mbdown')break}}
     if(n){touch();bgRender()}
   }finally{ccRunning=false}}
@@ -764,7 +776,9 @@ function defCaa(a){if(a.src!=='mb')return;
     Object.defineProperty(a,k,{enumerable:false,configurable:true,get(){return `https://coverartarchive.org/release-group/${a.id.slice(3)}/front-${sz}`},set(v){Object.defineProperty(a,k,{value:v,writable:true,enumerable:true,configurable:true})}})}
   if(a.n===0)delete a.n}
 function mbAlbum(rg){const d=rg['first-release-date']||'',o={id:'mb:'+rg.id,t:rg.title,y:d.slice(0,4),type:mbType(rg),src:'mb'};if(d)o.md=d;defCaa(o);return o}
-async function mbResolve(b){
+const mbResolving=new Map();
+function mbResolve(b){if(b.mbid)return Promise.resolve(b.mbid);if(!mbResolving.has(b.id))mbResolving.set(b.id,mbResolve0(b).finally(()=>mbResolving.delete(b.id)));return mbResolving.get(b.id)}
+async function mbResolve0(b){
   if(b.mbid)return b.mbid;
   if(b.sid){const u=await mbGet('/url?resource='+encodeURIComponent('https://open.spotify.com/artist/'+b.sid)+'&inc=artist-rels');
     const rel=u&&(u.relations||[]).find(r=>r.artist&&r.artist.id);if(rel)b.mbid=rel.artist.id}
@@ -1413,7 +1427,7 @@ app.addEventListener('pointermove',e=>{if(lp&&Math.hypot(e.clientX-lp.x,e.client
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>app.addEventListener(ev,lpCancel));window.addEventListener('scroll',lpCancel,{passive:true});
 app.addEventListener('click',e=>{if(lpFired){lpFired=false;e.preventDefault();e.stopPropagation()}},true);
 app.addEventListener('contextmenu',e=>{if(e.target.closest('.list [data-go]')&&LP_VIEWS.includes(UI.view.k))e.preventDefault()});
-(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,5000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setInterval(()=>mbLoader(),3600e3);setTimeout(()=>ccLoader(),30000);setInterval(()=>ccLoader(),2*3600e3);})();
+(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,5000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setInterval(()=>mbLoader(),3600e3);setTimeout(()=>ccLoader(),8000);setInterval(()=>ccLoader(),10*60000);})();
 })();
 </script>
 </body>
