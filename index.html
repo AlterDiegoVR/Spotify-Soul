@@ -155,7 +155,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0M';
+const APP_VER='1.0N';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -583,7 +583,7 @@ function rediscover(){const all=bands();if(!all.length)return null;const s=all.s
 const crumbs=parts=>`<nav class="path">`+parts.map((p,i)=>(i?'<span class="sep">/</span>':'')+(p.v?`<button data-go="${J(p.v)}">${esc(p.t)}</button>`:`<span>${esc(p.t)}</span>`)).join('')+`</nav>`;
 const thumb=src=>src?`<img src="${esc(src)}" alt="" loading="lazy">`:'';
 const favFirst=l=>l.slice().sort((a,b)=>(b.fav?1:0)-(a.fav?1:0)||byName(a,b));
-function favBtn(n){return `<button class="btn small${UI.favOnly?' favon':''}" data-act="favOnly" aria-pressed="${!!UI.favOnly}">${UI.favOnly?'♥':'♡'} Favoritas${n?` ${n}`:''}</button>`}
+function favBtn(n){return `<button class="btn small${UI.favOnly?' favon':''}" data-act="favOnly" aria-pressed="${!!UI.favOnly}">${UI.favOnly?'♥':'♡'} Favoritas${n?` (${n})`:''}</button>`}
 function favList(list,showPath){return list.length?`<div class="list">${favFirst(list).map(b=>bandRow(b,showPath)).join('')}</div>`:`<div class="empty">No hay favoritas aquí todavía. Márcalas con ♡ dentro de cada banda.</div>`}
 const FMTS=['LP','CD','Casete','Digital'];
 const rymSlug=n=>(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/&/g,' and ').replace(/['’.]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
