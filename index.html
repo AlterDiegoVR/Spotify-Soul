@@ -157,7 +157,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0Q';
+const APP_VER='1.0R';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -1310,7 +1310,7 @@ async function submitForm(id){
   else if(f.t==='sub'){const n=val('f_name');if(!n)return;const host=v.k==='sub'?SG(G(v.g),v.s):G(v.g);host.subs.push({id:rid(),name:n,subs:[]});touch()}
   else if(f.t==='renameGenre'){const n=val('f_name');if(!n)return;G(v.g).name=n;touch()}
   else if(f.t==='renameSub'){const n=val('f_name');if(!n)return;SG(G(v.g),v.s).name=n;touch()}
-  else if(f.t==='spsearch'){f.q=val('f_sq');if(!f.q)return;try{UI.spResults=(await sp('/search?type=artist&limit=10&q='+encodeURIComponent(f.q))).artists.items}catch(e){say(e.message==='nologin'?'Conecta Spotify en Ajustes.':e.message,true)}render();return}
+  else if(f.t==='spsearch'){f.q=val('f_sq');if(!f.q)return;try{UI.spResults=(await sp('/search?type=artist&limit=10&q='+encodeURIComponent(f.q))).artists.items}catch(e){say(e.message==='nologin'?'Conecta Spotify en Ajustes.':spErr(e),true)}render();return}
   else if(f.t==='year'){const b=D.bands[f.b||v.id],al=(b.albums||[]).find(x=>x.id===f.a),y=val('f_y');if(y&&!/^\d{4}$/.test(y)){say('Escribe el año con cuatro cifras, por ejemplo 1983.',true);return}b.years=b.years||{};const auto=al?((al.md||'').slice(0,4)||al.y||''):'';if(!y||y===auto)delete b.years[f.a];else b.years[f.a]=y;touch()}
   else if(f.t==='edit'){const b=D.bands[v.id];b.parentId=val('f_parent')||null;b.note=val('f_note');{const r=val('f_rym');if(r&&!/^https?:\/\/\S+$/i.test(r)){say('Pega una dirección web completa (que empiece por https://).',true);return}if(r)b.rym=r;else delete b.rym}const [g,s]=(val('f_place')||'|').split('|');b.genreId=g||null;b.subId=s||null;b.also=(b.also||[]).filter(x=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null)));fixPrimary(b);touch()}
   UI.form=null;render();
