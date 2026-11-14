@@ -147,7 +147,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0G';
+const APP_VER='1.0H';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -561,10 +561,10 @@ function go(v,fromHistory){
   if(!fromHistory){try{const cur=history.state&&history.state.v;if(JSON.stringify(cur)!==JSON.stringify(v))history.pushState({v},'')}catch(_){}}
   if(v.k==='band'&&D.bands[v.id]){const b=D.bands[v.id];if(!fromHistory){b.lastOpened=Date.now();touch()}if(b.fetchedAt&&Date.now()-b.fetchedAt<=90*864e5)setTimeout(()=>{if(UI.view.k==='band'&&UI.view.id===b.id)spPhoto(b)},4000);
     if(b.sid&&b.fetchedAt&&!b.mbDates)mbSync(b).then(ok=>{if(ok&&UI.view.k==='band'&&UI.view.id===b.id)render()}).catch(()=>{});
-    if(cfg.autoMB!==false&&ccNeed(b))ccOne(b).then(()=>{touch();if(UI.view.k==='band'&&UI.view.id===b.id)bgRender()}).catch(()=>{});
+    if(cfg.autoMB!==false&&!Array.isArray(b.cc)&&(b.mbCountry===undefined||(b.mbCountry===''&&Date.now()-(b.ccAt||0)>864e5)))ccOne(b,true).then(()=>{touch();if(UI.view.k==='band'&&UI.view.id===b.id)bgRender()}).catch(()=>{});
     const useMB=cfg.autoMB!==false&&(!b.fetchedAt?!(b.mbNone&&Date.now()-b.mbNone<7*864e5):b.src==='mb');
     if(useMB&&(!b.fetchedAt||Date.now()-b.fetchedAt>90*864e5)){if(!b.fetchedAt)UI.busy='Cargando discografía de MusicBrainz…';
-      mbDisco(b).then(ok=>{UI.busy=null;if(UI.view.k==='band'&&UI.view.id===b.id)bgRender()}).catch(()=>{UI.busy=null;if(!b.fetchedAt){b.mbNone=Date.now();say('MusicBrainz no responde ahora mismo. Puedes cargar la discografía desde Spotify.',true)}bgRender()})}
+      mbFg++;mbDisco(b).finally(()=>mbFg--).then(ok=>{UI.busy=null;if(UI.view.k==='band'&&UI.view.id===b.id)bgRender()}).catch(()=>{UI.busy=null;if(!b.fetchedAt){b.mbNone=Date.now();say('MusicBrainz no responde ahora mismo. Puedes cargar la discografía desde Spotify.',true)}bgRender()})}
     else if(!useMB&&!(b.mbNone&&!b.fetchedAt)&&b.sid&&tok&&(!b.fetchedAt||Date.now()-b.fetchedAt>90*864e5)){UI.busy='Cargando discografía…';fetchDisco(b).then(()=>{UI.busy=null;render()}).catch(e=>{UI.busy=null;if(e.message==='ratelimit'){render();const id=b.id;setTimeout(()=>{if(UI.view.k==='band'&&UI.view.id===id&&!D.bands[id]?.fetchedAt)go(UI.view,true)},Math.max(spBlocked-Date.now(),0)+1500)}else say(spErr(e),true)})}}
   render();window.scrollTo(0,0);
 }
@@ -625,10 +625,23 @@ function ccFilter(list){
   return {html:`<label class="ccf">País<select id="f_ccf"><option value="">Todos los países (${list.length})</option>${opts}${none?`<option value="--" ${v==='--'?'selected':''}>Sin país (${none})</option>`:''}</select></label>`,list:out}}
 let ccRunning=false;const ccBusy=new Set();
 const ccNeed=b=>!Array.isArray(b.cc)&&(b.mbCountry===undefined||(b.mbCountry===''&&(!b.ccAt||Date.now()-b.ccAt>90*864e5)));
-async function ccOne(b){if(ccBusy.has(b.id))return;ccBusy.add(b.id);
+// país de un artista: el suyo, o el de su zona (ciudad o región) subiendo hasta el país
+async function countryFromArtist(ar){
+  if(ar.country)return ar.country;
+  for(const ar0 of [ar.area,ar['begin-area']]){let a=ar0;
+    for(let i=0;a&&i<4;i++){
+      if((a['iso-3166-1-codes']||[]).length)return a['iso-3166-1-codes'][0];
+      if((a['iso-3166-2-codes']||[]).length)return a['iso-3166-2-codes'][0].slice(0,2);
+      const full=await mbGet('/area/'+a.id+'?inc=area-rels');if(!full)break;
+      if((full['iso-3166-1-codes']||[]).length)return full['iso-3166-1-codes'][0];
+      if((full['iso-3166-2-codes']||[]).length)return full['iso-3166-2-codes'][0].slice(0,2);
+      const up=(full.relations||[]).find(r=>r.type==='part of'&&r.direction==='backward'&&r.area);a=up&&up.area}}
+  return ''}
+let mbFg=0;const mbYield=async()=>{while(mbFg>0)await sleep(250)};
+async function ccOne(b,fg){if(ccBusy.has(b.id))return;ccBusy.add(b.id);if(fg)mbFg++;
   try{const id=await mbResolve(b);let c='';
-    if(id){const ar=await mbGet('/artist/'+id);if(ar){c=ar.country||'';if(!c&&ar.area&&(ar.area['iso-3166-1-codes']||[]).length)c=ar.area['iso-3166-1-codes'][0]}}
-    b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now()}finally{ccBusy.delete(b.id)}}
+    if(id){const ar=await mbGet('/artist/'+id);if(ar)c=await countryFromArtist(ar)}
+    b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now()}finally{ccBusy.delete(b.id);if(fg)mbFg--}}
 // rellena el país de todas las bandas por detrás mientras la app está abierta (MusicBrainz, sin gastar Spotify)
 async function ccLoader(){
   if(ccRunning||cfg.autoMB===false)return;ccRunning=true;
@@ -637,22 +650,22 @@ async function ccLoader(){
     // 1) buscar el identificador de MusicBrainz por su enlace de Spotify, de 50 en 50 en una sola consulta
     const sp=b=>'https://open.spotify.com/artist/'+b.sid;
     const noId=order.filter(b=>!b.mbid&&b.sid&&!(b.mbUrlTry&&Date.now()-b.mbUrlTry<30*864e5));
-    for(let i=0;i<noId.length;i+=50){const chunk=noId.slice(i,i+50);
+    for(let i=0;i<noId.length;i+=50){const chunk=noId.slice(i,i+50);await mbYield();
       try{const r=await mbGet('/url?inc=artist-rels&'+chunk.map(b=>'resource='+encodeURIComponent(sp(b))).join('&'));
         const list=r?(r.urls||(r.resource?[r]:[])):[],by=new Map(list.map(u=>[u.resource,u]));
         for(const b of chunk){b.mbUrlTry=Date.now();const u=by.get(sp(b)),rel=u&&(u.relations||[]).find(x=>x.artist&&x.artist.id);if(rel)b.mbid=rel.artist.id}}
       catch(e){if(e.message==='mbdown')return}}
     // 2) las que tienen identificador: país de 40 en 40 en una sola consulta
     const withId=order.filter(b=>b.mbid&&ccNeed(b));
-    for(let i=0;i<withId.length;i+=40){const chunk=withId.slice(i,i+40);
+    for(let i=0;i<withId.length;i+=40){const chunk=withId.slice(i,i+40);await mbYield();
       try{const r=await mbGet('/artist?limit=100&query='+encodeURIComponent('arid:('+chunk.map(b=>b.mbid).join(' OR ')+')'));
         const by=new Map(((r&&r.artists)||[]).map(x=>[x.id,x]));
-        for(const b of chunk){const x=by.get(b.mbid);if(!x)continue;const c=x.country||'';b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now();n++}
+        for(const b of chunk){const x=by.get(b.mbid);if(!x||!x.country||x.country==='XU')continue;b.mbCountry=x.country;b.ccAt=Date.now();n++}
         touch();bgRender()}
       catch(e){if(e.message==='mbdown')return}}
     for(const b of order){if(!ccNeed(b))continue;
       if(document.visibilityState==='hidden'){await new Promise(r=>{const f=()=>{if(document.visibilityState==='visible'){document.removeEventListener('visibilitychange',f);r()}};document.addEventListener('visibilitychange',f)})}
-      try{await ccOne(b);n++;if(n%10===0){touch();bgRender()}}
+      await mbYield();try{await ccOne(b);n++;if(n%10===0){touch();bgRender()}}
       catch(e){if(e.message==='mbdown')break}}
     if(n){touch();bgRender()}
   }finally{ccRunning=false}}
@@ -825,7 +838,7 @@ async function mbSync(b,force){
   }
   const ar=await mbGet('/artist/'+b.mbid+'?inc=release-groups+genres+tags&type=album|ep');
   if(!ar){b.mbid='';b.mbAt=Date.now();touch();return false}
-  {let c=ar.country||'';if(!c&&ar.area&&(ar.area['iso-3166-1-codes']||[]).length)c=ar.area['iso-3166-1-codes'][0];b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now()}
+  if(!Array.isArray(b.cc)){const c=await countryFromArtist(ar).catch(()=>'');if(c&&c!=='XU'){b.mbCountry=c;b.ccAt=Date.now()}}
   const gs=(ar.genres&&ar.genres.length?ar.genres:(ar.tags||[])).filter(t=>(t.count||0)>0).sort((x,y)=>(y.count||0)-(x.count||0)).slice(0,6).map(t=>t.name);
   b.mbTags=gs;
   let rgs=ar['release-groups']||[];
@@ -839,6 +852,7 @@ async function mbSync(b,force){
     b.mbDates=Date.now()}
   b.mbAt=Date.now();touch();return true;
 }
+if(!LS.get('md_ccfix1',false)){for(const b of Object.values(D.bands||{}))if(b.mbCountry===''){delete b.mbCountry;delete b.ccAt}LS.set('md_ccfix1',true)}
 if(!LS.get('md_mbfix2',false)){let k=0;for(const b of Object.values(D.bands||{}))if(b.mbid&&b.mbDates&&b.src!=='mb'){b.mbDates=0;k++}LS.set('md_mbfix2',true);LS.set('md_mbfix1',true);if(k)touch()}
 if(!LS.get('md_mbfix1',false)){let k=0;for(const b of Object.values(D.bands||{}))if(b.mbid&&b.mbDates){b.mbDates=0;k++}LS.set('md_mbfix1',true);if(k)touch()}
 const MB_DAY=400,MB_RUN=40;let mbRunning=false;
@@ -853,7 +867,7 @@ async function mbLoader(max){
   if(mbRunning||cfg.autoMB===false)return;mbRunning=true;
   try{let day=LS.get('md_mb',{d:'',n:0});const today=new Date().toISOString().slice(0,10);if(day.d!==today)day={d:today,n:0};
     let run=0;const cap=max||MB_RUN;
-    while(run<cap&&(max||day.n<MB_DAY)&&Date.now()>=mbDown){const b=mbPick();if(!b)break;
+    while(run<cap&&(max||day.n<MB_DAY)&&Date.now()>=mbDown){await mbYield();const b=mbPick();if(!b)break;
       try{await mbSync(b,true)}catch(e){if(e.message==='mbdown')break;b.mbAt=Date.now()}
       run++;day.n++;LS.set('md_mb',day);if(UI.mbProg){UI.mbProg.done++;const el=document.getElementById('mbprog');if(el)el.textContent=`Buscando… ${UI.mbProg.done} de ${UI.mbProg.total}`}}
   }finally{mbRunning=false;if(UI.mbProg){UI.mbProg=null;UI.busy=null;bgRender()}}
