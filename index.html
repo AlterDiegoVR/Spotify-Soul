@@ -27,6 +27,8 @@ html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
 [hidden]{display:none!important}
 .wrap{max-width:720px;margin:0 auto;padding-block:14px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+
+.qbar{flex-wrap:nowrap;gap:6px}.qbar .btn{flex:1 1 auto;white-space:nowrap;padding-left:8px;padding-right:8px;font-size:14px}
 header.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .brand{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:.02em;text-transform:uppercase;cursor:pointer;background:none;border:0;color:var(--fg);padding:0}
 .brand .nm{color:var(--fg)}.brand em{font-style:normal;color:var(--accent)}
@@ -36,6 +38,11 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:12p
 .dest{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 8px;border-radius:999px;background:var(--tab);color:var(--fg);border:1px solid var(--line)}
 .dest button{background:none;border:0;color:var(--muted);cursor:pointer;padding:0 2px;font-size:13px}
 .sync{font-family:var(--mono);font-size:11.5px;color:var(--muted);background:none;border:0;cursor:pointer;padding:4px}
+.sync.ic{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;padding:0;color:var(--accent)}.sync.ic.pend{color:var(--muted)}.sync.ic.bad{color:#ef7a6c}.sync[hidden]{display:none}
+header.top .btns{flex-wrap:nowrap;gap:6px;align-items:center}
+.btn.small.ic{width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:17px}
+.brand .bt{display:flex;flex-direction:column;align-items:flex-start;line-height:1}
+.brand .bt .ver{margin:3px 0 0 1px!important;align-self:flex-start!important}
 .sync.bad{color:var(--danger);text-decoration:underline dotted}
 .path{font-family:var(--mono);font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:0}
 .path button{font:inherit;color:var(--accent);background:none;border:0;padding:2px 0;cursor:pointer}
@@ -58,7 +65,8 @@ img.flag{width:auto!important;height:11px!important;min-width:0!important;flex:n
 .flag.txt{height:auto;font-family:var(--mono);font-size:10px;padding:0 3px;color:var(--muted);box-shadow:0 0 0 1px var(--line)}
 .flag.globe{height:auto;box-shadow:none;color:var(--muted)}.flag.globe svg{width:13px;height:13px;vertical-align:-2px}
 .ccline{font-size:13px;color:var(--muted)}.ccline .flag{margin:0 2px 0 0;height:12px}
-.ccf{margin-bottom:6px}
+.ccf{margin-bottom:0}
+.chk.deept{align-self:flex-end;min-height:48px;display:flex;align-items:center;gap:8px}
 .row .name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:500}
 .row .sub{display:block;font-size:12px;color:var(--muted);font-weight:400}
 .secH{font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin:6px 0 -4px}
@@ -147,7 +155,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0L';
+const APP_VER='1.0M';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -575,7 +583,7 @@ function rediscover(){const all=bands();if(!all.length)return null;const s=all.s
 const crumbs=parts=>`<nav class="path">`+parts.map((p,i)=>(i?'<span class="sep">/</span>':'')+(p.v?`<button data-go="${J(p.v)}">${esc(p.t)}</button>`:`<span>${esc(p.t)}</span>`)).join('')+`</nav>`;
 const thumb=src=>src?`<img src="${esc(src)}" alt="" loading="lazy">`:'';
 const favFirst=l=>l.slice().sort((a,b)=>(b.fav?1:0)-(a.fav?1:0)||byName(a,b));
-function favBtn(n){return `<button class="btn small${UI.favOnly?' favon':''}" data-act="favOnly" aria-pressed="${!!UI.favOnly}">${UI.favOnly?'♥ Viendo favoritas':'♡ Solo favoritas'}${n?` (${n})`:''}</button>`}
+function favBtn(n){return `<button class="btn small${UI.favOnly?' favon':''}" data-act="favOnly" aria-pressed="${!!UI.favOnly}">${UI.favOnly?'♥':'♡'} Favoritas${n?` ${n}`:''}</button>`}
 function favList(list,showPath){return list.length?`<div class="list">${favFirst(list).map(b=>bandRow(b,showPath)).join('')}</div>`:`<div class="empty">No hay favoritas aquí todavía. Márcalas con ♡ dentro de cada banda.</div>`}
 const FMTS=['LP','CD','Casete','Digital'];
 const rymSlug=n=>(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/&/g,' and ').replace(/['’.]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
@@ -586,7 +594,7 @@ function placeMatcher(place,deep){const [pg,ps]=(place||'|').split('|');const g=
   if(!deep)return p=>p.g===pg&&!SG(g,p.s);
   const gids=new Set();for(const x of g.subs)shareIds(x).forEach(i=>gids.add(i));return p=>p.g===pg||gids.has(p.s)}
 function scopeMatch(place,deep=true){const pm=placeMatcher(place,deep);if(!pm)return()=>true;return b=>places(b).some(pm)}
-const deepTick=on=>`<label class="chk" style="align-self:center"><input type="checkbox" id="f_deep" ${on?'checked':''}> Incluir subgéneros</label>`;
+const deepTick=on=>`<label class="chk deept"><input type="checkbox" id="f_deep" ${on?'checked':''}> Incluir subgéneros</label>`;
 function albumRow(b,a,o={}){
   const YR=b.years||{},y=albumYear(b,a),ed=!!YR[a.id],r=(b.ratings||{})[a.id]||0,on=(b.picked||[]).includes(a.id),pend=(b.pend||[]).includes(a.id),fm=(b.fmt||{})[a.id]||[];
   const editing=UI.form&&UI.form.t==='year'&&UI.form.a===a.id&&UI.form.b===b.id;
@@ -631,7 +639,7 @@ function ccFilter(list){
   const v=UI.view.cc||'';
   const opts=[...cnt].sort((a,b)=>b[1]-a[1]||ccName(a[0]).localeCompare(ccName(b[0]),'es')).map(([c,n])=>`<option value="${c}" ${v===c?'selected':''}>${esc(ccName(c))} (${n})</option>`).join('');
   const out=!v?list:v==='--'?list.filter(b=>!ccOf(b).length):list.filter(b=>ccOf(b).includes(v));
-  return {html:`<label class="ccf">País<select id="f_ccf"><option value="">Todos los países (${list.length})</option>${opts}${none?`<option value="--" ${v==='--'?'selected':''}>Sin país (${none})</option>`:''}</select></label>`,list:out}}
+  return {html:`<label class="ccf" aria-label="País"><select id="f_ccf"><option value="">Todos los países (${list.length})</option>${opts}${none?`<option value="--" ${v==='--'?'selected':''}>Sin país (${none})</option>`:''}</select></label>`,list:out}}
 let ccRunning=false;const ccBusy=new Set();
 const ccNeed=b=>!Array.isArray(b.cc)&&(b.mbCountry===undefined||(b.mbCountry===''&&(!b.ccAt||Date.now()-b.ccAt>90*864e5)));
 // país de un artista: el suyo, o el de su zona (ciudad o región) subiendo hasta el país
@@ -766,7 +774,7 @@ function vGenre(){
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:g.name}])+`<h1>${esc(g.name)}</h1>`;
   const gids=new Set();for(const x of g.subs)shareIds(x).forEach(i=>gids.add(i));
   const favs=topBands(b=>b.fav&&places(b).some(p=>p.g===g.id||gids.has(p.s)));
-  h+=`<div class="btns">${favBtn(favs.length)}<button class="btn small" data-go="${J({k:'albums',rated:true,place:g.id+'|'})}">Discos</button><button class="btn small" data-go="${J({k:'filter',mode:'a',roul:true,mark:true,place:g.id+'|'})}">Ruleta</button><button class="btn small" data-go="${J({k:'mkpl',place:g.id+'|'})}">Crear lista en Spotify</button></div>`;
+  h+=`<div class="btns qbar">${favBtn(favs.length)}<button class="btn small" data-go="${J({k:'albums',rated:true,place:g.id+'|'})}">Discos</button><button class="btn small" data-go="${J({k:'filter',mode:'a',roul:true,mark:true,place:g.id+'|'})}">Ruleta</button><button class="btn small" data-go="${J({k:'mkpl',place:g.id+'|'})}">Crear lista</button></div>`;
   if(UI.favOnly)return h+`<div class="section"><h2>Favoritas en ${esc(g.name)}</h2>${favList(favs,true)}</div>`;
   const subs=g.subs.slice().sort(byName);
   h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?subRows(g,subs,[]):`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
@@ -960,7 +968,7 @@ function vSub(){
   const tw=twins(s).filter(t=>t.s!==s);
   if(tw.length)h+=`<div class="btns"><span class="hint">Compartido con:</span>${tw.map(t=>`<button class="btn small" data-go="${J({k:'sub',g:t.g.id,s:t.s.id})}">${esc([t.g.name,...t.path.map(z=>z.name),t.s.name].join(' / '))}</button>`).join('')}</div>`;
   const sids=shareIds(s),sfavs=topBands(b=>b.fav&&places(b).some(p=>sids.has(p.s)));
-  h+=`<div class="btns">${favBtn(sfavs.length)}<button class="btn small" data-go="${J({k:'albums',rated:true,place:g.id+'|'+s.id})}">Discos</button><button class="btn small" data-go="${J({k:'filter',mode:'a',roul:true,mark:true,place:g.id+'|'+s.id})}">Ruleta</button><button class="btn small" data-go="${J({k:'mkpl',place:g.id+'|'+s.id})}">Crear lista en Spotify</button></div>`;
+  h+=`<div class="btns qbar">${favBtn(sfavs.length)}<button class="btn small" data-go="${J({k:'albums',rated:true,place:g.id+'|'+s.id})}">Discos</button><button class="btn small" data-go="${J({k:'filter',mode:'a',roul:true,mark:true,place:g.id+'|'+s.id})}">Ruleta</button><button class="btn small" data-go="${J({k:'mkpl',place:g.id+'|'+s.id})}">Crear lista</button></div>`;
   if(UI.favOnly)return h+`<div class="section"><h2>Favoritas en ${esc(s.name)}</h2>${favList(sfavs,true)}</div>`;
   const kids=sharedChildren(s);
   if(kids.length)h+=`<div class="section"><h2>Subgéneros</h2>${subRows(cg,kids,trail.map(z=>z.s.id).concat(s.id))}</div>`;
@@ -1358,6 +1366,7 @@ app.addEventListener('click',async e=>{
     case'rsrc':UI.view={...v,src:a.dataset.v};UI.rPick=null;render();break;
     case'ccAdd':{const b=D.bands[v.id],c=a.dataset.c;if(!b||!c)return;const cur=ccOf(b).slice();if(!cur.includes(c))cur.push(c);b.cc=cur;touch();render();const q=document.getElementById('f_ccq');if(q){q.value='';const sg=document.getElementById('ccsug');if(sg)sg.innerHTML=ccSuggest('',b)}break}
     case'ccRm':{const b=D.bands[v.id];if(!b)return;b.cc=ccOf(b).filter(x=>x!==a.dataset.c);touch();render();break}
+    case'spDismiss':LS.set('md_spdis',spBlocked);render();break;
     case'ccNow':mbDown=0;ccLoader();setTimeout(()=>bgRender(),300);break;
     case'ccAuto':{const b=D.bands[v.id];if(!b)return;delete b.cc;touch();render();break}
     case'rtStars':UI.view={...v,stars:+a.dataset.n};render();break;
@@ -1440,7 +1449,9 @@ app.addEventListener('keydown',e=>{if(e.target.id==='f_ccq'&&e.key==='Enter'){e.
 app.addEventListener('input',e=>{if(e.target.id==='f_ccq'){const sg=document.getElementById('ccsug');if(sg)sg.innerHTML=ccSuggest(e.target.value,D.bands[UI.view.id]);return}if(e.target.id==='q'){UI.q=e.target.value;const pos=e.target.selectionStart;render();const q=document.getElementById('q');if(q){q.focus();try{q.setSelectionRange(pos,pos)}catch(_){}}}});
 
 /* ================= render ================= */
-function renderSync(){const s=document.getElementById('syncst');if(s){s.textContent=UI.syncState;s.title=UI.syncErr||'';s.classList.toggle('bad',UI.syncState==='Sin sincronizar')}}
+function syncIcon(){const st=UI.syncState,c='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.1 4.7 4.7 0 0 0 7 18.5z"/>';
+  return c+(st==='Sincronizado'?'<path d="M9.3 13.6l1.9 1.9 3.6-3.6"/>':st==='Cambios sin subir'?'<path d="M12 16v-4.5M9.8 13.4 12 11.2l2.2 2.2"/>':st==='Sincronizando…'?'<path d="M9.5 14h.01M12 14h.01M14.5 14h.01" stroke-width="2.6"/>':'<path d="M10 12l4 4M14 12l-4 4"/>')+'</svg>'}
+function renderSync(){const s=document.getElementById('syncst');if(s){s.innerHTML=syncIcon();s.hidden=!UI.syncState;s.title=UI.syncErr||UI.syncState;s.setAttribute('aria-label',UI.syncState);s.classList.toggle('bad',UI.syncState==='Sin sincronizar');s.classList.toggle('pend',UI.syncState==='Cambios sin subir'||UI.syncState==='Sincronizando…')}}
 function bandCover(b){const al=(b.albums||[]).filter(a=>a.img&&!(b.hidden||[]).includes(a.id)),pk=new Set(b.picked||[]),mine=al.filter(a=>pk.has(a.id)),pool=mine.length?mine:al.filter(a=>a.type!=='single').length?al.filter(a=>a.type!=='single'):al;if(!pool.length)return b.imgL||b.img||'';const a=pool[Math.floor((UI.bgPick||0)*pool.length)%pool.length];return a.imgL||a.img}
 function paintBg(){const el=document.getElementById('bg');if(!el)return;const b=UI.view.k==='band'&&D.bands[UI.view.id];const url=b?bandCover(b):'';const cv=el.firstElementChild;
   if(url){const css=`url("${url.replace(/"/g,'%22')}")`;if(cv.style.backgroundImage!==css)cv.style.backgroundImage=css;el.classList.add('on')}else el.classList.remove('on')}
@@ -1454,11 +1465,11 @@ function renderInner(){
   if(saveErr)notes+=`<div class="notice err"><b>⚠ No se están guardando los cambios en este dispositivo</b> (${esc(saveErr)}). No cierres la app: ${cfg.ghToken?'pulsa “Sincronizar ahora” en Ajustes para subirlos a GitHub, y ':''}avísame del error.</div>`;
   else if(!IDB.db)notes+=`<div class="notice">Este navegador no deja usar el almacenamiento grande (${esc(IDB.err||'')}); la colección se guarda en el pequeño, de unos 5 MB.</div>`;
   if(cfg.clientId&&!tok&&v!=='settings')notes+=`<div class="notice">Spotify no está conectado. <button class="btn small spot" data-act="login">Conectar</button></div>`;
-  if(tok&&Date.now()<spBlocked&&!(UI.msg&&/Spotify/.test(UI.msg.text)))notes+=`<div class="notice err">${esc(spErr({message:'ratelimit'}))}</div>`;
+  if(tok&&Date.now()<spBlocked&&LS.get('md_spdis',0)!==spBlocked&&!(UI.msg&&/Spotify/.test(UI.msg.text)))notes+=`<div class="notice err" style="display:flex;gap:10px;align-items:flex-start"><span style="flex:1">${esc(spErr({message:'ratelimit'}))}</span><button class="btn small ic" data-act="spDismiss" aria-label="Cerrar aviso" title="Cerrar">✕</button></div>`;
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
   if(UI.undo)notes+=`<div class="notice">${UI.undo.bands.length===1?`“${esc(UI.undo.bands[0].name)}” quitada de tu colección.`:`${UI.undo.bands.length} bandas quitadas de tu colección.`} <button class="btn small" data-act="undo">Deshacer</button></div>`;
   const n=bands().length;
-  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt=""><span class="nm">Spoti<em>Soul</em></span><small class="ver">v${APP_VER}</small></button><div class="btns"><button class="sync${UI.syncState==='Sin sincronizar'?' bad':''}" id="syncst" data-act="syncInfo" title="${esc(UI.syncErr||'')}">${esc(UI.syncState)}</button>${cfg.clientId?`<button class="btn small" data-act="tutorial" aria-label="Ayuda y tutorial" title="Ayuda">?</button><button class="btn small" data-act="settings">Ajustes</button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
+  app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt=""><span class="bt"><span class="nm">Spoti<em>Soul</em></span><small class="ver">v${APP_VER}</small></span></button><div class="btns"><button class="sync ic${UI.syncState==='Sin sincronizar'?' bad':''}" id="syncst" data-act="syncInfo" ${UI.syncState?'':'hidden'} title="${esc(UI.syncErr||UI.syncState)}" aria-label="${esc(UI.syncState)}">${syncIcon()}</button>${cfg.clientId?`<button class="btn small ic" data-act="tutorial" aria-label="Ayuda y tutorial" title="Ayuda">?</button><button class="btn small ic" data-act="settings" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
   for(const id in keep){const el=document.getElementById(id);if(el&&el.type!=='checkbox')el.value=keep[id]}
 }
 
