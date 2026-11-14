@@ -147,7 +147,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0J';
+const APP_VER='1.0K';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -610,6 +610,14 @@ let regionNames=null;try{regionNames=new Intl.DisplayNames(['es'],{type:'region'
 const ccName=c=>CC_HIST[c]||(()=>{try{return regionNames.of(c)}catch(_){return c}})()||c;
 const ccOf=b=>Array.isArray(b.cc)?b.cc:(b.mbCountry?[b.mbCountry]:[]);
 const GLOBE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.6 5.4 3.6 8.5s-1.1 5.9-3.6 8.5c-2.5-2.6-3.6-5.4-3.6-8.5S9.5 6.1 12 3.5z"/></svg>';
+// buscador de países: por nombre (sin tildes, empezando por las que empiezan así) o por código; sin texto, los más usados en tu colección
+const ccFold=t=>(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+function ccSuggest(q,b){const have=new Set(ccOf(b||{})),f=ccFold(q.trim());let list;
+  if(!f){const cnt=new Map();for(const x of bands())for(const c of ccOf(x))cnt.set(c,(cnt.get(c)||0)+1);list=[...cnt].sort((a,b)=>b[1]-a[1]).map(x=>x[0]).slice(0,8)}
+  else{const all=['XW','XE',...CC_ALL].map(c=>({c,n:ccFold(ccName(c))}));
+    list=all.filter(x=>x.n.startsWith(f)||x.c.toLowerCase()===f).concat(all.filter(x=>!x.n.startsWith(f)&&x.c.toLowerCase()!==f&&x.n.includes(f))).map(x=>x.c).slice(0,10)}
+  list=list.filter(c=>!have.has(c));
+  return list.length?(f?'':'<span class="hint">Más usados:</span>')+list.map(c=>`<button type="button" class="btn small" data-act="ccAdd" data-c="${c}">${flag(c)} ${esc(ccName(c))}</button>`).join(''):(f?'<span class="hint">Ningún país con ese nombre.</span>':'')}
 function flag(c){
   if(c==='XW')return `<span class="flag globe" title="Internacional">${GLOBE}</span>`;
   const f=c==='XE'?'eu':(CC_HIST[c]?null:c.toLowerCase());
@@ -1246,7 +1254,7 @@ function formHtml(){
       <div class="btns">${placeSelect('f_also','','','Añadir otra rama…')}<button type="button" class="btn small" data-act="addAlso">Añadir</button></div></div></div>
       <label>Es relacionado de<select id="f_parent">${parents}</select></label>
       <div style="display:flex;flex-direction:column;gap:8px"><span class="hint">País${Array.isArray(b.cc)?' (puesto a mano)':b.mbCountry?' (según MusicBrainz)':''}</span><div class="btns">${ccOf(b).map(c=>`<button type="button" class="btn small" data-act="ccRm" data-c="${c}">${flag(c)} ${esc(ccName(c))} ✕</button>`).join('')||'<span class="hint">Sin país.</span>'}</div>
-      <div class="btns"><select id="f_ccadd"><option value="">Añadir país…</option><option value="XW">Internacional</option><option value="XE">Europa</option>${CC_ALL.map(c=>[c,ccName(c)]).sort((x,y)=>x[1].localeCompare(y[1],'es')).map(([c,n])=>`<option value="${c}">${esc(n)}</option>`).join('')}</select><button type="button" class="btn small" data-act="ccAdd">Añadir</button>${Array.isArray(b.cc)?`<button type="button" class="btn small" data-act="ccAuto">Volver al de MusicBrainz</button>`:''}</div></div>
+      <input type="text" id="f_ccq" placeholder="Escribe un país para añadirlo (p. ej. es, alem…)" autocomplete="off"><div class="btns" id="ccsug">${ccSuggest('',b)}</div>${Array.isArray(b.cc)?`<div class="btns"><button type="button" class="btn small" data-act="ccAuto">Volver al de MusicBrainz</button></div>`:''}</div>
       <label>Nota corta<input type="text" id="f_note" value="${esc(b.note||'')}" placeholder="p. ej. antes se llamaban…"></label>
       <label>Enlace de Rate Your Music<input type="url" id="f_rym" value="${esc(b.rym||'')}" placeholder="https://rateyourmusic.com/artist/${esc(rymSlug(b.name))}"></label><span class="hint">Si el botón abre una ficha equivocada, pega aquí la correcta. Si la banda no está en Rate Your Music, puedes poner cualquier otra web (Metal Archives, Wikipedia, Bandcamp…). Vacío = la automática.</span>
       <button class="btn danger small" type="button" data-act="askDelBand" style="align-self:flex-start">Quitar de mi colección</button>`,'Guardar');
@@ -1339,7 +1347,7 @@ app.addEventListener('click',async e=>{
     case'alf':{const k=a.dataset.k,val=a.dataset.v;const nv={...v};if(k==='rated'){nv.rated=!v.rated;if(!nv.rated)nv.stars=0}else if(k==='pend')nv.pend=!v.pend;else if(k==='fmt')nv.fmt=v.fmt===val?'':val;else if(k==='stars'){nv.rated=true;nv.stars=+val}else if(k==='clearYear')nv.year='';else if(k==='fav')nv.fav=!v.fav;else if(k==='mode')nv.mode=val;UI.view=nv;try{history.replaceState({v:UI.view},'')}catch(_){}render();break}
     case'spin':UI.rPick=null;render();break;
     case'rsrc':UI.view={...v,src:a.dataset.v};UI.rPick=null;render();break;
-    case'ccAdd':{const b=D.bands[v.id],c=(document.getElementById('f_ccadd')||{}).value;if(!b||!c)return;const cur=ccOf(b).slice();if(!cur.includes(c))cur.push(c);b.cc=cur;touch();render();const sel=document.getElementById('f_ccadd');if(sel)sel.value='';break}
+    case'ccAdd':{const b=D.bands[v.id],c=a.dataset.c;if(!b||!c)return;const cur=ccOf(b).slice();if(!cur.includes(c))cur.push(c);b.cc=cur;touch();render();const q=document.getElementById('f_ccq');if(q){q.value='';const sg=document.getElementById('ccsug');if(sg)sg.innerHTML=ccSuggest('',b)}break}
     case'ccRm':{const b=D.bands[v.id];if(!b)return;b.cc=ccOf(b).filter(x=>x!==a.dataset.c);touch();render();break}
     case'ccNow':mbDown=0;ccLoader();setTimeout(()=>bgRender(),300);break;
     case'ccAuto':{const b=D.bands[v.id];if(!b)return;delete b.cc;touch();render();break}
@@ -1419,7 +1427,8 @@ app.addEventListener('change',e=>{
   if(e.target.id==='f_rtplace'){UI.view={...UI.view,place:e.target.value};render();return}
 });
 app.addEventListener('submit',e=>{e.preventDefault();submitForm(e.target.id)});
-app.addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;const pos=e.target.selectionStart;render();const q=document.getElementById('q');if(q){q.focus();try{q.setSelectionRange(pos,pos)}catch(_){}}}});
+app.addEventListener('keydown',e=>{if(e.target.id==='f_ccq'&&e.key==='Enter'){e.preventDefault();const first=document.querySelector('#ccsug [data-act=ccAdd]');if(first&&e.target.value.trim())first.click()}});
+app.addEventListener('input',e=>{if(e.target.id==='f_ccq'){const sg=document.getElementById('ccsug');if(sg)sg.innerHTML=ccSuggest(e.target.value,D.bands[UI.view.id]);return}if(e.target.id==='q'){UI.q=e.target.value;const pos=e.target.selectionStart;render();const q=document.getElementById('q');if(q){q.focus();try{q.setSelectionRange(pos,pos)}catch(_){}}}});
 
 /* ================= render ================= */
 function renderSync(){const s=document.getElementById('syncst');if(s){s.textContent=UI.syncState;s.title=UI.syncErr||'';s.classList.toggle('bad',UI.syncState==='Sin sincronizar')}}
