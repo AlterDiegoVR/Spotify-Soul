@@ -161,7 +161,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0W';
+const APP_VER='1.0X';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -260,13 +260,21 @@ function mergeData(base,L,R){
         if(lh===(bb[k]||hs(undefined))){if(rb[k]===undefined)delete lb[k];else lb[k]=rb[k]}}
       M.bands[id]=lb;continue}
     if(lb){ // no está en el otro dispositivo
-      if(bb){const untouched=Object.keys(bb).every(k=>hs(lb[k])===bb[k])&&Object.keys(lb).every(k=>k in bb);if(untouched)continue}
+      // borrada en el otro: solo se conserva si aquí la cambiaste tú (no cuentan fotos, fechas, países… que rellena la app sola)
+      if(bb){const keys=new Set([...Object.keys(bb),...Object.keys(lb)].filter(k=>!AUTO_FIELDS.has(k)));const untouched=[...keys].every(k=>hs(lb[k])===(bb[k]||hs(undefined)));if(untouched)continue}
       M.bands[id]=lb;continue}
     // solo en el otro dispositivo
     if(bb)continue; // la borraste aquí
     if(rb.sid&&LI[rb.sid])continue; // la quitaste de tu colección aquí
     M.bands[id]=rb}
+  dropIgnored(M);
   return M}
+const AUTO_FIELDS=new Set(['img','imgL','imgSrc','imgTry','spImgAt','dzTry','mbid','mbAt','mbDates','mbTags','mbCountry','ccAt','mbUrlTry','mbNone','fetchedAt','albums','spGenres','lastOpened','singlesAt','newsAt']);
+// una banda que quitaste de tu colección (está en excluidas) nunca debe seguir en la colección
+function dropIgnored(d){const ig=d.ignored||{};let n=0;
+  for(const [id,b] of Object.entries(d.bands||{}))if(b.sid&&ig[b.sid]){delete d.bands[id];n++}
+  if(n)for(const b of Object.values(d.bands))if(b.parentId&&!d.bands[b.parentId])b.parentId=null;
+  return n}
 let syncN=0;
 async function readGist(){const g=await gh('/gists/'+cfg.gistId);const f=g.files&&g.files[GIST_FILE];if(!f)return null;let text=f.content;if(f.truncated)text=await (await fetch(f.raw_url)).text();return JSON.parse(text)}
 async function writeGist(obj){await gh('/gists/'+cfg.gistId,{method:'PATCH',body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(obj)}}})})}
@@ -479,7 +487,7 @@ const twins=x=>allSubs().filter(o=>norm(o.s.name)===norm(x.name));
 function shareIds(x){const ids=new Set(),st=[x];while(st.length){const n=st.pop();for(const t of twins(n)){if(ids.has(t.s.id))continue;ids.add(t.s.id);for(const c of t.s.subs)st.push(c)}}ids.add(x.id);return ids}
 function sharedChildren(x){const seen=new Map();for(const t of twins(x).sort((a,b)=>(a.s===x?-1:b.s===x?1:0)))for(const c of t.s.subs)if(!seen.has(norm(c.name)))seen.set(norm(c.name),c);for(const c of x.subs)if(!seen.has(norm(c.name)))seen.set(norm(c.name),c);return[...seen.values()]}
 function descIds(x){const ids=[x.id];walk(x.subs,y=>ids.push(y.id));return ids}
-function fixData(){
+function fixData(){dropIgnored(D);
   if(!D||typeof D!=='object')D={v:1,updated:0,tree:{genres:[]},bands:{}};
   if(!D.bands||typeof D.bands!=='object')D.bands={};
   if(!D.ignored||typeof D.ignored!=='object')D.ignored={};
