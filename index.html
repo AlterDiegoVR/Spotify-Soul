@@ -147,7 +147,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0F';
+const APP_VER='1.0G';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -634,8 +634,16 @@ async function ccLoader(){
   if(ccRunning||cfg.autoMB===false)return;ccRunning=true;
   try{let n=0;
     const order=bands().filter(ccNeed).sort((a,b)=>(UI.visible.has(b.id)-UI.visible.has(a.id))||((b.fav?1:0)-(a.fav?1:0))||((places(b).length?1:0)-(places(a).length?1:0)));
-    // las que ya tienen identificador de MusicBrainz: de 40 en 40 en una sola consulta
-    const withId=order.filter(b=>b.mbid);
+    // 1) buscar el identificador de MusicBrainz por su enlace de Spotify, de 50 en 50 en una sola consulta
+    const sp=b=>'https://open.spotify.com/artist/'+b.sid;
+    const noId=order.filter(b=>!b.mbid&&b.sid&&!(b.mbUrlTry&&Date.now()-b.mbUrlTry<30*864e5));
+    for(let i=0;i<noId.length;i+=50){const chunk=noId.slice(i,i+50);
+      try{const r=await mbGet('/url?inc=artist-rels&'+chunk.map(b=>'resource='+encodeURIComponent(sp(b))).join('&'));
+        const list=r?(r.urls||(r.resource?[r]:[])):[],by=new Map(list.map(u=>[u.resource,u]));
+        for(const b of chunk){b.mbUrlTry=Date.now();const u=by.get(sp(b)),rel=u&&(u.relations||[]).find(x=>x.artist&&x.artist.id);if(rel)b.mbid=rel.artist.id}}
+      catch(e){if(e.message==='mbdown')return}}
+    // 2) las que tienen identificador: país de 40 en 40 en una sola consulta
+    const withId=order.filter(b=>b.mbid&&ccNeed(b));
     for(let i=0;i<withId.length;i+=40){const chunk=withId.slice(i,i+40);
       try{const r=await mbGet('/artist?limit=100&query='+encodeURIComponent('arid:('+chunk.map(b=>b.mbid).join(' OR ')+')'));
         const by=new Map(((r&&r.artists)||[]).map(x=>[x.id,x]));
