@@ -52,6 +52,13 @@ button.row,a.row{cursor:pointer}
 .row:first-child{border-top:0}
 button.row:hover,a.row:hover{background:var(--tab)}
 .list .row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.flag{height:11px;width:auto;border-radius:2px;margin-left:7px;vertical-align:0;display:inline-block;box-shadow:0 0 0 1px rgba(255,255,255,.12)}
+img.flag{width:auto!important;height:11px!important;min-width:0!important;flex:none!important;object-fit:contain;border-radius:2px!important}
+.ccline img.flag{height:12px!important}
+.flag.txt{height:auto;font-family:var(--mono);font-size:10px;padding:0 3px;color:var(--muted);box-shadow:0 0 0 1px var(--line)}
+.flag.globe{height:auto;box-shadow:none;color:var(--muted)}.flag.globe svg{width:13px;height:13px;vertical-align:-2px}
+.ccline{font-size:13px;color:var(--muted)}.ccline .flag{margin:0 2px 0 0;height:12px}
+.ccf{margin-bottom:6px}
 .row .name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:500}
 .row .sub{display:block;font-size:12px;color:var(--muted);font-weight:400}
 .secH{font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin:6px 0 -4px}
@@ -140,7 +147,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0C';
+const APP_VER='1.0D';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -590,11 +597,46 @@ function albumRow(b,a,o={}){
    (UI.fmtOpen===b.id+'|'+a.id?`<div class="fmtrow">${FMTS.map(f=>`<button class="pill${fm.includes(f)?' on':''}" data-act="fmt" ${D_} data-f="${f}" aria-pressed="${fm.includes(f)}">${f}</button>`).join('')}<button class="pill" data-act="fmtOpen" ${D_}>Listo</button></div>`:'')+
    `</div><button class="mk${on?' on':''}" data-act="pick" ${D_} aria-pressed="${on}" title="${on?'Quitar de mi selección':'Añadir a mi selección'}">✓</button></div>`;
 }
+/* ================= países y banderas ================= */
+const CC_ALL='AF AX AL DZ AS AD AO AI AQ AG AR AM AW AU AT AZ BS BH BD BB BY BE BZ BJ BM BT BO BQ BA BW BR IO BN BG BF BI CV KH CM CA KY CF TD CL CN CX CC CO KM CG CD CK CR CI HR CU CW CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FK FO FJ FI FR GF PF GA GM GE DE GH GI GR GL GD GP GU GT GG GN GW GY HT VA HN HK HU IS IN ID IR IQ IE IM IL IT JM JP JE JO KZ KE KI KP KR KW KG LA LV LB LS LR LY LI LT LU MO MG MW MY MV ML MT MH MQ MR MU YT MX FM MD MC MN ME MS MA MZ MM NA NR NP NL NC NZ NI NE NG NU NF MK MP NO OM PK PW PS PA PG PY PE PH PN PL PT PR QA RE RO RU RW BL SH KN LC MF PM VC WS SM ST SA SN RS SC SL SG SX SK SI SB SO ZA GS SS ES LK SD SR SJ SE CH SY TW TJ TZ TH TL TG TK TO TT TN TR TM TC TV UG UA AE GB US UY UZ VU VE VN VG VI WF EH YE ZM ZW XK'.split(' ');
+const CC_HIST={SU:'Unión Soviética',YU:'Yugoslavia',CS:'Checoslovaquia',DD:'Alemania del Este',XW:'Internacional',XE:'Europa'};
+let regionNames=null;try{regionNames=new Intl.DisplayNames(['es'],{type:'region'})}catch(_){}
+const ccName=c=>CC_HIST[c]||(()=>{try{return regionNames.of(c)}catch(_){return c}})()||c;
+const ccOf=b=>Array.isArray(b.cc)?b.cc:(b.mbCountry?[b.mbCountry]:[]);
+const GLOBE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.6 5.4 3.6 8.5s-1.1 5.9-3.6 8.5c-2.5-2.6-3.6-5.4-3.6-8.5S9.5 6.1 12 3.5z"/></svg>';
+function flag(c){
+  if(c==='XW')return `<span class="flag globe" title="Internacional">${GLOBE}</span>`;
+  const f=c==='XE'?'eu':(CC_HIST[c]?null:c.toLowerCase());
+  if(!f)return `<span class="flag txt" title="${esc(ccName(c))}">${esc(c)}</span>`;
+  return `<img class="flag" src="https://flagcdn.com/w40/${f}.png" alt="${esc(c)}" title="${esc(ccName(c))}" loading="lazy">`}
+const flags=b=>ccOf(b).map(flag).join('');
+// filtro por país en listas de bandas (el valor vive en la vista, así el botón atrás lo recuerda)
+function ccFilter(list){
+  const cnt=new Map();let none=0;for(const b of list){const cs=ccOf(b);if(!cs.length)none++;for(const c of cs)cnt.set(c,(cnt.get(c)||0)+1)}
+  if(!cnt.size)return {html:'',list};
+  const v=UI.view.cc||'';
+  const opts=[...cnt].sort((a,b)=>b[1]-a[1]||ccName(a[0]).localeCompare(ccName(b[0]),'es')).map(([c,n])=>`<option value="${c}" ${v===c?'selected':''}>${esc(ccName(c))} (${n})</option>`).join('');
+  const out=!v?list:v==='--'?list.filter(b=>!ccOf(b).length):list.filter(b=>ccOf(b).includes(v));
+  return {html:`<label class="ccf">País<select id="f_ccf"><option value="">Todos los países (${list.length})</option>${opts}${none?`<option value="--" ${v==='--'?'selected':''}>Sin país (${none})</option>`:''}</select></label>`,list:out}}
+let ccRunning=false;
+async function ccLoader(){
+  if(ccRunning||cfg.autoMB===false)return;ccRunning=true;
+  try{let n=0;
+    const need=b=>b.mbCountry===undefined||(b.mbCountry===''&&(!b.ccAt||Date.now()-b.ccAt>90*864e5));
+    const order=bands().filter(need).sort((a,b)=>(UI.visible.has(b.id)-UI.visible.has(a.id))||((b.fav?1:0)-(a.fav?1:0))||((places(b).length?1:0)-(places(a).length?1:0)));
+    for(const b of order){if(n>=500)break;if(!need(b))continue;
+      try{const id=await mbResolve(b);let c='';
+        if(id){const ar=await mbGet('/artist/'+id);if(ar){c=ar.country||'';if(!c&&ar.area&&(ar.area['iso-3166-1-codes']||[]).length)c=ar.area['iso-3166-1-codes'][0]}}
+        b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now();n++;
+        if(n%20===0){touch();bgRender()}}
+      catch(e){if(e.message==='mbdown')break}}
+    if(n){touch();bgRender()}
+  }finally{ccRunning=false}}
 function bandRow(b,showPath){
   if(!b.img&&b.sid)UI.visible.add(b.id);
   const n=(b.albums||[]).filter(a=>a.type==='album').length,pk=(b.picked||[]).length,rel=children(b.id).length,pl=placeOf(b);
   const par=b.parentId&&D.bands[b.parentId],meta=showPath?((placeName(b)||'sin clasificar')+(places(b).length>1?` +${places(b).length-1}`:'')):(par?`rel. de ${par.name}`:(b.fetchedAt?(pk?`${pk} de ${n} discos`:`${n} disco${n===1?'':'s'}`):'')+(rel?` · ${rel} rel.`:''));
-  return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}</span><span class="meta">${esc(meta)}</span></button>`;
+  return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}${flags(b)}</span><span class="meta">${esc(meta)}</span></button>`;
 }
 const TUT=[
  ['Bienvenido a SpotiSoul',()=>`<p>Ordena tu música de Spotify como tus carpetas de siempre: <b>Género / Subgénero / Banda / Año – Disco</b>. Tú decides el árbol; Spotify pone la música.</p>
@@ -682,8 +724,8 @@ function vGenre(){
   if(UI.favOnly)return h+`<div class="section"><h2>Favoritas en ${esc(g.name)}</h2>${favList(favs,true)}</div>`;
   const subs=g.subs.slice().sort(byName);
   h+=`<div class="section"><h2>Subgéneros</h2>`+(subs.length?subRows(g,subs,[]):`<div class="empty">Sin subgéneros todavía.</div>`)+`</div>`;
-  const loose=favFirst(topBands(b=>places(b).some(p=>p.g===g.id&&!SG(g,p.s))));
-  if(loose.length)h+=`<div class="section"><h2>Sin subgénero</h2>${UI.selMode?selList(loose):`<div class="list">${loose.map(b=>bandRow(b)).join('')}</div>`}</div>`;
+  const looseAll=favFirst(topBands(b=>places(b).some(p=>p.g===g.id&&!SG(g,p.s)))),cf=ccFilter(looseAll),loose=cf.list;
+  if(looseAll.length)h+=`<div class="section"><h2>Sin subgénero</h2>${cf.html}${UI.selMode?selList(loose):`<div class="list">${loose.map(b=>bandRow(b)).join('')}</div>`}</div>`;
   h+=`<div class="btns"><button class="btn primary" data-act="addBand">+ Banda</button><button class="btn" data-act="newSub">+ Subgénero</button>${loose.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameGenre">Renombrar</button><button class="btn danger" data-act="delGenre">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'')+(UI.selMode&&loose.length?selBar(true):'');
 }
@@ -757,6 +799,7 @@ async function mbSync(b,force){
   }
   const ar=await mbGet('/artist/'+b.mbid+'?inc=release-groups+genres+tags&type=album|ep');
   if(!ar){b.mbid='';b.mbAt=Date.now();touch();return false}
+  {let c=ar.country||'';if(!c&&ar.area&&(ar.area['iso-3166-1-codes']||[]).length)c=ar.area['iso-3166-1-codes'][0];b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now()}
   const gs=(ar.genres&&ar.genres.length?ar.genres:(ar.tags||[])).filter(t=>(t.count||0)>0).sort((x,y)=>(y.count||0)-(x.count||0)).slice(0,6).map(t=>t.name);
   b.mbTags=gs;
   let rgs=ar['release-groups']||[];
@@ -865,8 +908,8 @@ function vSub(){
   const kids=sharedChildren(s);
   if(kids.length)h+=`<div class="section"><h2>Subgéneros</h2>${subRows(cg,kids,trail.map(z=>z.s.id).concat(s.id))}</div>`;
   const same=new Set(twins(s).map(t=>t.s.id).concat(s.id));
-  const list=favFirst(topBands(b=>places(b).some(p=>same.has(p.s))));
-  h+=`<div class="section">${kids.length?`<h2>Bandas en ${esc(s.name)}</h2>`:''}`+(list.length?(UI.selMode?selList(list):`<div class="list">${list.map(b=>bandRow(b)).join('')}</div>`):(kids.length?'':`<div class="empty">Ninguna banda aquí todavía. Muévelas desde “Sin clasificar” o crea subgéneros dentro.</div>`))+`</div>`;
+  const listAll=favFirst(topBands(b=>places(b).some(p=>same.has(p.s)))),cf=ccFilter(listAll),list=cf.list;
+  h+=`<div class="section">${kids.length?`<h2>Bandas en ${esc(s.name)}</h2>`:''}${cf.html}`+(list.length?(UI.selMode?selList(list):`<div class="list">${list.map(b=>bandRow(b)).join('')}</div>`):(kids.length?'':`<div class="empty">Ninguna banda aquí todavía. Muévelas desde “Sin clasificar” o crea subgéneros dentro.</div>`))+`</div>`;
   h+=`<div class="btns"><button class="btn primary" data-act="addBand">+ Banda</button><button class="btn" data-act="newSub">+ Subgénero</button>${list.length&&!UI.selMode?`<button class="btn" data-act="selMode">Seleccionar bandas</button>`:''}<button class="btn" data-act="renameSub">Renombrar</button><button class="btn danger" data-act="delSub">Borrar</button></div>`;
   return h+(UI.form?formHtml():'')+(UI.confirm?confirmHtml():'')+(UI.selMode&&list.length?selBar(true):'');
 }
@@ -915,7 +958,7 @@ function vBand(){
   const others=ps.filter(p=>p!==cur);
   const chain=[];let x=b;while(x.parentId&&D.bands[x.parentId]&&chain.length<10){x=D.bands[x.parentId];chain.unshift(x)}
   chain.forEach(c=>parts.push({t:c.name,v:{k:'band',id:c.id}}));parts.push({t:b.name});
-  let h=crumbs(parts)+`<div class="hero">${b.img?`<img src="${esc(b.img)}" alt="">`:''}<div class="in"><h1>${esc(b.name)}</h1>${b.note?`<span class="hint">${esc(b.note)}</span>`:''}${(b.spGenres||[]).length?`<div class="tags">${b.spGenres.slice(0,6).map(g=>`<span class="tag">${esc(g)}</span>`).join('')}</div>`:''}</div></div>`;
+  let h=crumbs(parts)+`<div class="hero">${b.img?`<img src="${esc(b.img)}" alt="">`:''}<div class="in"><h1>${esc(b.name)}</h1>${ccOf(b).length?`<span class="ccline">${ccOf(b).map(c=>flag(c)+' '+esc(ccName(c))).join(' · ')}</span>`:''}${b.note?`<span class="hint">${esc(b.note)}</span>`:''}${(b.spGenres||[]).length?`<div class="tags">${b.spGenres.slice(0,6).map(g=>`<span class="tag">${esc(g)}</span>`).join('')}</div>`:''}</div></div>`;
   h+=`<div class="btns">${b.sid?`<a class="btn spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener">Abrir en Spotify</a>`:''}<a class="btn" href="${esc(b.rym||'https://rateyourmusic.com/artist/'+rymSlug(b.name))}" target="_blank" rel="noopener">Rate Your Music ↗</a><button class="btn${b.fav?' favon':''}" data-act="favBand" aria-pressed="${!!b.fav}">${b.fav?'♥ Favorita':'♡ Favorita'}</button><button class="btn" data-act="editBand">Mover / editar</button>${b.src==='mb'||(b.sid&&tok)?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:''}${b.src==='mb'&&b.sid&&tok?`<button class="btn small" data-act="useSpotify">Usar discografía de Spotify</button>`:''}</div>`;
   const ownP=b.parentId?ownPlaces(b):[];if(ownP.length)h+=`<div class="btns"><span class="hint">Sus géneros:</span>${ownP.map(p=>`<button class="btn small" data-go="${J(p.s?{k:'sub',g:p.g,s:p.s}:{k:'genre',g:p.g})}">${esc(pName(p))}</button>`).join('')}</div>`;
   if(others.length&&!b.parentId)h+=`<div class="btns"><span class="hint">También en:</span>${others.map(p=>`<button class="btn small" data-go="${J(p.s?{k:'sub',g:p.g,s:p.s}:{k:'genre',g:p.g})}">${esc(pName(p))}</button>`).join('')}</div>`;
@@ -1064,8 +1107,8 @@ function vRoulette(){
 }
 function vFavs(){const [pg,ps]=(UI.view.place||'|').split('|');let match=()=>true;
   if(pg&&G(pg)){if(ps&&findAny(ps)){const ids=shareIds(findAny(ps).s);match=b=>places(b).some(p=>ids.has(p.s))}else{const gids=new Set();for(const x of G(pg).subs)shareIds(x).forEach(i=>gids.add(i));match=b=>places(b).some(p=>p.g===pg||gids.has(p.s))}}
-  const l=topBands(b=>b.fav&&match(b));
-  return crumbs([{t:'Inicio',v:{k:'home'}},{t:'Favoritas'}])+`<h1>Favoritas</h1><label>Género${placeSelect('f_favplace',pg,ps,'Todos los géneros')}</label>`+(UI.selMode&&l.length?selList(favFirst(l))+selBar(true):favList(l,true))}
+  const cf=ccFilter(topBands(b=>b.fav&&match(b))),l=cf.list;
+  return crumbs([{t:'Inicio',v:{k:'home'}},{t:'Favoritas'}])+`<h1>Favoritas</h1><label>Género${placeSelect('f_favplace',pg,ps,'Todos los géneros')}</label>${cf.html}`+(UI.selMode&&l.length?selList(favFirst(l))+selBar(true):favList(l,true))}
 function vForgotten(){
   const list=bands().sort((a,b)=>(a.lastOpened||0)-(b.lastOpened||0)).slice(0,100);
   return crumbs([{t:'Inicio',v:{k:'home'}},{t:'Olvidadas'}])+`<h1>Olvidadas</h1><span class="hint">Las que llevas más tiempo sin abrir, primero.</span>`+(list.length?`<div class="list">${list.map(b=>`<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${esc(b.name)}</span><span class="meta">${esc(ago(b.lastOpened))}</span></button>`).join('')}</div>`:`<div class="empty">Todavía no hay bandas.</div>`);
@@ -1139,6 +1182,8 @@ function formHtml(){
       <div class="section"><span class="hint">También en</span>${(b.also||[]).filter(x=>G(x.g)).length?`<div class="tags">${(b.also||[]).map((x,i)=>G(x.g)?`<button type="button" class="btn small" data-act="rmAlso" data-i="${i}">${esc(pName({g:x.g,s:x.s||null}))} ✕</button>`:'').join('')}</div>`:''}
       <div class="btns">${placeSelect('f_also','','','Añadir otra rama…')}<button type="button" class="btn small" data-act="addAlso">Añadir</button></div></div></div>
       <label>Es relacionado de<select id="f_parent">${parents}</select></label>
+      <div style="display:flex;flex-direction:column;gap:8px"><span class="hint">País${Array.isArray(b.cc)?' (puesto a mano)':b.mbCountry?' (según MusicBrainz)':''}</span><div class="btns">${ccOf(b).map(c=>`<button type="button" class="btn small" data-act="ccRm" data-c="${c}">${flag(c)} ${esc(ccName(c))} ✕</button>`).join('')||'<span class="hint">Sin país.</span>'}</div>
+      <div class="btns"><select id="f_ccadd"><option value="">Añadir país…</option><option value="XW">Internacional</option><option value="XE">Europa</option>${CC_ALL.map(c=>[c,ccName(c)]).sort((x,y)=>x[1].localeCompare(y[1],'es')).map(([c,n])=>`<option value="${c}">${esc(n)}</option>`).join('')}</select><button type="button" class="btn small" data-act="ccAdd">Añadir</button>${Array.isArray(b.cc)?`<button type="button" class="btn small" data-act="ccAuto">Volver al de MusicBrainz</button>`:''}</div></div>
       <label>Nota corta<input type="text" id="f_note" value="${esc(b.note||'')}" placeholder="p. ej. antes se llamaban…"></label>
       <label>Enlace de Rate Your Music<input type="url" id="f_rym" value="${esc(b.rym||'')}" placeholder="https://rateyourmusic.com/artist/${esc(rymSlug(b.name))}"></label><span class="hint">Si el botón abre una ficha equivocada, pega aquí la correcta. Si la banda no está en Rate Your Music, puedes poner cualquier otra web (Metal Archives, Wikipedia, Bandcamp…). Vacío = la automática.</span>
       <button class="btn danger small" type="button" data-act="askDelBand" style="align-self:flex-start">Quitar de mi colección</button>`,'Guardar');
@@ -1231,6 +1276,9 @@ app.addEventListener('click',async e=>{
     case'alf':{const k=a.dataset.k,val=a.dataset.v;const nv={...v};if(k==='rated'){nv.rated=!v.rated;if(!nv.rated)nv.stars=0}else if(k==='pend')nv.pend=!v.pend;else if(k==='fmt')nv.fmt=v.fmt===val?'':val;else if(k==='stars'){nv.rated=true;nv.stars=+val}else if(k==='clearYear')nv.year='';UI.view=nv;render();break}
     case'spin':UI.rPick=null;render();break;
     case'rsrc':UI.view={...v,src:a.dataset.v};UI.rPick=null;render();break;
+    case'ccAdd':{const b=D.bands[v.id],c=(document.getElementById('f_ccadd')||{}).value;if(!b||!c)return;const cur=ccOf(b).slice();if(!cur.includes(c))cur.push(c);b.cc=cur;touch();render();const sel=document.getElementById('f_ccadd');if(sel)sel.value='';break}
+    case'ccRm':{const b=D.bands[v.id];if(!b)return;b.cc=ccOf(b).filter(x=>x!==a.dataset.c);touch();render();break}
+    case'ccAuto':{const b=D.bands[v.id];if(!b)return;delete b.cc;touch();render();break}
     case'rtStars':UI.view={...v,stars:+a.dataset.n};render();break;
     case'favBand':{const b=D.bands[v.id];b.fav=!b.fav;touch();render();break}
     case'favOnly':UI.favOnly=!UI.favOnly;render();break;
@@ -1300,6 +1348,7 @@ app.addEventListener('change',e=>{
   if(e.target.id==='f_photos'){cfg.dzPhotos=e.target.checked;LS.set('md_cfg',cfg);if(cfg.dzPhotos)photoLoader();return}
   if(e.target.id==='f_auto'){cfg.autoImport=e.target.checked;LS.set('md_cfg',cfg);return}
   if(e.target.id==='f_favplace'){UI.view={...UI.view,place:e.target.value};render();return}
+  if(e.target.id==='f_ccf'){UI.view={...UI.view,cc:e.target.value};try{history.replaceState({v:UI.view},'')}catch(_){}render();return}
   if(e.target.id==='f_alyear'){const y=e.target.value.trim();if(!y||/^\d{4}$/.test(y)){UI.view={...UI.view,year:y};render()}return}
   if(e.target.id==='f_alplace'||e.target.id==='f_roplace'){UI.view={...UI.view,place:e.target.value};UI.rPick=null;render();return}
   if(e.target.id==='f_rtplace'){UI.view={...UI.view,place:e.target.value};render();return}
@@ -1351,7 +1400,7 @@ app.addEventListener('pointermove',e=>{if(lp&&Math.hypot(e.clientX-lp.x,e.client
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>app.addEventListener(ev,lpCancel));window.addEventListener('scroll',lpCancel,{passive:true});
 app.addEventListener('click',e=>{if(lpFired){lpFired=false;e.preventDefault();e.stopPropagation()}},true);
 app.addEventListener('contextmenu',e=>{if(e.target.closest('.list [data-go]')&&LP_VIEWS.includes(UI.view.k))e.preventDefault()});
-(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,5000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setInterval(()=>mbLoader(),3600e3);})();
+(async()=>{try{fixTree();render()}catch(e){showFatal(e);return}await handleCallback();try{history.replaceState({v:UI.view},'')}catch(_){}try{render()}catch(e){showFatal(e)}await pullRemote();await autoImport();setTimeout(photoLoader,5000);setInterval(photoLoader,2*3600e3);setTimeout(()=>mbLoader(),15000);setInterval(()=>mbLoader(),3600e3);setTimeout(()=>ccLoader(),30000);setInterval(()=>ccLoader(),2*3600e3);})();
 })();
 </script>
 </body>
