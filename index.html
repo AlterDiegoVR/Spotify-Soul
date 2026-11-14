@@ -147,7 +147,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0H';
+const APP_VER='1.0I';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -644,7 +644,7 @@ async function ccOne(b,fg){if(ccBusy.has(b.id))return;ccBusy.add(b.id);if(fg)mbF
     b.mbCountry=c==='XU'?'':c;b.ccAt=Date.now()}finally{ccBusy.delete(b.id);if(fg)mbFg--}}
 // rellena el país de todas las bandas por detrás mientras la app está abierta (MusicBrainz, sin gastar Spotify)
 async function ccLoader(){
-  if(ccRunning||cfg.autoMB===false)return;ccRunning=true;
+  if(ccRunning||cfg.autoMB===false)return;ccRunning=true;if(UI.view.k==='settings')bgRender();
   try{let n=0;
     const order=bands().filter(ccNeed).sort((a,b)=>(UI.visible.has(b.id)-UI.visible.has(a.id))||((b.fav?1:0)-(a.fav?1:0))||((places(b).length?1:0)-(places(a).length?1:0)));
     // 1) buscar el identificador de MusicBrainz por su enlace de Spotify, de 50 en 50 en una sola consulta
@@ -667,8 +667,8 @@ async function ccLoader(){
       if(document.visibilityState==='hidden'){await new Promise(r=>{const f=()=>{if(document.visibilityState==='visible'){document.removeEventListener('visibilitychange',f);r()}};document.addEventListener('visibilitychange',f)})}
       await mbYield();try{await ccOne(b);n++;if(n%10===0){touch();bgRender()}}
       catch(e){if(e.message==='mbdown')break}}
-    if(n){touch();bgRender()}
-  }finally{ccRunning=false}}
+    if(n)touch();
+  }finally{ccRunning=false;bgRender()}}
 function bandRow(b,showPath){
   if(!b.img&&b.sid)UI.visible.add(b.id);
   const n=(b.albums||[]).filter(a=>a.type==='album').length,pk=(b.picked||[]).length,rel=children(b.id).length,pl=placeOf(b);
@@ -1192,6 +1192,12 @@ function vSettings(){
   }
   h+=`</div>`;
   const ign=Object.entries(D.ignored||{}).sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'es'));
+  {const all=bands(),manual=all.filter(b=>Array.isArray(b.cc)).length,withC=all.filter(b=>ccOf(b).length).length,pend=all.filter(ccNeed).length,none=all.length-withC,notFound=none-all.filter(b=>!ccOf(b).length&&ccNeed(b)).length;
+    const st=cfg.autoMB===false?'La búsqueda en MusicBrainz está desactivada.':ccRunning?`<b style="color:var(--accent)">Buscando ahora…</b> quedan ${pend} por revisar.`:pend?`En pausa: quedan ${pend} por revisar. Sigue sola mientras tienes la app abierta (o pulsa Buscar ahora).`:'<b>Búsqueda terminada.</b> Ya se han revisado todas.';
+    h+=`<div class="panel"><div class="divider" style="font-size:20px">Países</div>
+    <span class="hint">${all.length} bandas · <b>${withC}</b> con país${manual?` (${manual} puestos a mano)`:''} · ${none} sin país${notFound?`, de ellas ${notFound} que MusicBrainz no ha podido situar`:''}.</span>
+    <span class="hint">${st}</span>
+    <div class="btns">${!ccRunning&&pend&&cfg.autoMB!==false?`<button class="btn small" data-act="ccNow">Buscar ahora</button>`:''}${none?`<button class="btn small" data-go="${J({k:'filter',mode:'b',cc:'--'})}">Ver las bandas sin país (${none})</button>`:''}</div></div>`}
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Importación</div>
   <label class="chk"><input type="checkbox" id="f_mb" ${cfg.autoMB===false?'':'checked'}> Buscar en MusicBrainz las fechas originales de los discos y los géneros de cada banda (gratis, sin gastar cuota de Spotify; ${bands().filter(b=>b.mbAt).length} de ${bands().length} bandas consultadas)</label>
   <label class="chk"><input type="checkbox" id="f_photos" ${cfg.dzPhotos===false?'':'checked'}> Rellenar las fotos de bandas que faltan con fotos de Deezer (no gasta cuota de Spotify; al abrir una banda se cambia por su foto de Spotify si la tiene) (${bands().filter(b=>!b.img).length} sin foto)</label>
@@ -1326,6 +1332,7 @@ app.addEventListener('click',async e=>{
     case'rsrc':UI.view={...v,src:a.dataset.v};UI.rPick=null;render();break;
     case'ccAdd':{const b=D.bands[v.id],c=(document.getElementById('f_ccadd')||{}).value;if(!b||!c)return;const cur=ccOf(b).slice();if(!cur.includes(c))cur.push(c);b.cc=cur;touch();render();const sel=document.getElementById('f_ccadd');if(sel)sel.value='';break}
     case'ccRm':{const b=D.bands[v.id];if(!b)return;b.cc=ccOf(b).filter(x=>x!==a.dataset.c);touch();render();break}
+    case'ccNow':ccLoader();setTimeout(()=>bgRender(),300);break;
     case'ccAuto':{const b=D.bands[v.id];if(!b)return;delete b.cc;touch();render();break}
     case'rtStars':UI.view={...v,stars:+a.dataset.n};render();break;
     case'favBand':{const b=D.bands[v.id];b.fav=!b.fav;touch();render();break}
