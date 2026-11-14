@@ -140,17 +140,44 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0B';
-(function(){
+const APP_VER='1.0C';
+(async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
-const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(_){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(_){}},del(k){try{localStorage.removeItem(k)}catch(_){}}};
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(_){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(_){return false}},del(k){try{localStorage.removeItem(k)}catch(_){}}};
+/* La colección (md_data) y la base de sincronización (md_base) viven en IndexedDB, que tiene cientos de MB.
+   localStorage (unos 5 MB) queda solo para la configuración pequeña. Si algo no se puede guardar, se avisa. */
+const IDB=await new Promise(res=>{let done=false;const fin=v=>{if(!done){done=true;res(v)}};
+  setTimeout(()=>fin({err:'tiempo agotado'}),5000);
+  try{const rq=indexedDB.open('spotisoul',1);rq.onupgradeneeded=()=>{rq.result.createObjectStore('kv')};
+    rq.onerror=()=>fin({err:String(rq.error||'no se pudo abrir')});
+    rq.onsuccess=()=>{const db=rq.result;try{const tx=db.transaction('kv','readonly'),st=tx.objectStore('kv'),a=st.get('md_data'),b=st.get('md_base');
+      tx.oncomplete=()=>fin({db,data:a.result,base:b.result});tx.onerror=()=>fin({err:String(tx.error||'lectura')})}catch(e){fin({err:String(e)})}}}
+  catch(e){fin({err:String(e)})}});
+const idbPut=(k,v)=>new Promise((ok,ko)=>{try{const tx=IDB.db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>ok();tx.onerror=()=>ko(tx.error);tx.onabort=()=>ko(tx.error||new Error('abortado'))}catch(e){ko(e)}});
+let saveErr=null,saveT=null,saving=null,saveAgain=false,lsHasData=(()=>{try{return localStorage.getItem('md_data')!==null}catch(_){return false}})();
+async function saveNow(){
+  clearTimeout(saveT);saveT=null;
+  if(saving){saveAgain=true;return saving}
+  saving=(async()=>{
+    try{
+      if(IDB.db){await idbPut('md_data',D);if(lsHasData){if(BASE!=null)await idbPut('md_base',BASE);LS.del('md_data');LS.del('md_base');lsHasData=false}}
+      else if(!LS.set('md_data',D))throw new Error('el almacenamiento del navegador está lleno');
+      if(saveErr){saveErr=null;render()}
+    }catch(e){const m=(e&&(e.message||e.name))||String(e);if(saveErr!==m){saveErr=m;render()}}
+    saving=null;if(saveAgain){saveAgain=false;saveNow()}
+  })();
+  return saving}
+function saveSoon(){if(!saveT)saveT=setTimeout(saveNow,300)}
+let BASE=IDB.db&&IDB.base!==undefined?IDB.base:LS.get('md_base',null);
+function setBase(v){BASE=v;if(IDB.db)idbPut('md_base',v).catch(()=>{});else if(v===null)LS.del('md_base');else LS.set('md_base',v)}
 const REDIRECT=location.origin+location.pathname;
 const SCOPES='user-follow-read user-library-read playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public';
 const GIST_FILE='mi-discoteca.json';
 let cfg=LS.get('md_cfg',{clientId:'',ghToken:'',gistId:''});
 let tok=LS.get('md_tok',null);
-let D=LS.get('md_data',null)||{v:1,updated:0,tree:{genres:[]},bands:{}};
+let D=(IDB.db&&IDB.data)||LS.get('md_data',null)||{v:1,updated:0,tree:{genres:[]},bands:{}};
+if(IDB.db&&!IDB.data&&lsHasData)setTimeout(saveNow,0);
 const UI={visible:new Set(),sim:{},fullDisco:false,showCode:false,view:{k:'home'},q:'',form:null,confirm:null,msg:null,busy:null,sel:new Set(),showSingles:false,spResults:null,playlists:null,syncState:'',pick:null};
 const app=document.getElementById('app');
 
@@ -176,7 +203,7 @@ let saveTimer=null,pushing=false,pendingPush=false,retryTimer=null,retryN=0,ghUn
 // como mucho cada 3 minutos si hay cambios pendientes, o con "Sincronizar ahora".
 let dirty=LS.get('md_dirty',false);
 function setDirty(v){if(dirty!==v){dirty=v;LS.set('md_dirty',v)}}
-function touch(){D.updated=Date.now();LS.set('md_data',D);if(cfg.ghToken){setDirty(true);if(!pushing&&UI.syncState!=='Sin sincronizar'){UI.syncState='Cambios sin subir';renderSync()}
+function touch(){D.updated=Date.now();saveSoon();if(cfg.ghToken){setDirty(true);if(!pushing&&UI.syncState!=='Sin sincronizar'){UI.syncState='Cambios sin subir';renderSync()}
   if(!saveTimer)saveTimer=setTimeout(()=>{saveTimer=null;if(dirty&&document.visibilityState==='visible')pushRemote()},3*60000)}}
 async function gh(path,opts={}){
   if(Date.now()<ghUntil){const e=new Error('GitHub 403: límite de la API, esperando');e.status=403;e.wait=ghUntil-Date.now();throw e}
@@ -227,20 +254,20 @@ async function pushRemote(){
   try{
     if(!cfg.gistId){
       const snap=snapOf(D),body=JSON.stringify({description:'SpotiSoul (datos)',public:false,files:{[GIST_FILE]:{content:JSON.stringify(D)}}});const g=await gh('/gists',{method:'POST',body});
-      cfg.gistId=g.id;LS.set('md_cfg',cfg);LS.set('md_base',snap);setDirty(false);
+      cfg.gistId=g.id;LS.set('md_cfg',cfg);setBase(snap);setDirty(false);
     }else if(LS.get('md_force',0)){
-      const snap=snapOf(D),h0=hs(D);await writeGist(D);LS.set('md_base',snap);LS.del('md_force');setDirty(hs(D)!==h0);
+      const snap=snapOf(D),h0=hs(D);await writeGist(D);setBase(snap);LS.del('md_force');setDirty(hs(D)!==h0);
     }else{
       const remote=await readGist();
-      if(!remote){const snap=snapOf(D),h0=hs(D);await writeGist(D);LS.set('md_base',snap);setDirty(hs(D)!==h0)}
+      if(!remote){const snap=snapOf(D),h0=hs(D);await writeGist(D);setBase(snap);setDirty(hs(D)!==h0)}
       else{
-        const before=hs(D);const M=mergeData(LS.get('md_base',null),D,remote);
-        D=M;fixTree();LS.set('md_data',D);changed=hs(D)!==before;
+        const before=hs(D);const M=mergeData(BASE,D,remote);
+        D=M;fixTree();saveNow();changed=hs(D)!==before;
         if(changed)bgRender();
         // la base es exactamente lo que se sube: si cambias algo mientras se sube, ese cambio no se da por sincronizado
         const snap=snapOf(D),h0=hs(D);
         if(h0!==hs(remote))await writeGist(D);
-        LS.set('md_base',snap);
+        setBase(snap);
         setDirty(hs(D)!==h0);
       }
     }
@@ -257,7 +284,7 @@ async function adoptRemote(){
   const g=await gh('/gists/'+cfg.gistId);const f=g.files&&g.files[GIST_FILE];
   if(!f)throw new Error('No encuentro la colección en ese Gist.');
   let text=f.content;if(f.truncated)text=await (await fetch(f.raw_url)).text();
-  D=JSON.parse(text);fixTree();LS.set('md_data',D);LS.set('md_base',snapOf(D));LS.del('md_force');UI.syncState='Sincronizado';
+  D=JSON.parse(text);fixTree();saveNow();setBase(snapOf(D));LS.del('md_force');UI.syncState='Sincronizado';
 }
 const makeCode=()=>btoa(unescape(encodeURIComponent(JSON.stringify({c:cfg.clientId,t:cfg.ghToken,g:cfg.gistId}))));
 async function applyCode(code){
@@ -330,9 +357,9 @@ function applyClaude(text){
 }
 async function pullRemote(){if(!cfg.ghToken||!cfg.gistId)return false;return pushRemote()}
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='hidden'){if(dirty&&cfg.ghToken)pushRemote();return}
+  if(document.visibilityState==='hidden'){if(saveT)saveNow();if(dirty&&cfg.ghToken)pushRemote();return}
   if(!pushing&&cfg.ghToken&&(dirty||Date.now()-lastPull>60000)){lastPull=Date.now();pullRemote()}});
-window.addEventListener('pagehide',()=>{if(dirty&&cfg.ghToken&&!pushing)pushRemote()});
+window.addEventListener('pagehide',()=>{if(saveT)saveNow();if(dirty&&cfg.ghToken&&!pushing)pushRemote()});
 
 /* ================= Spotify: login PKCE + API ================= */
 const b64url=buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
@@ -440,7 +467,7 @@ function fixData(){
     if(b.parentId&&(!D.bands[b.parentId]||b.parentId===k))b.parentId=null;}
   const seen=new Set();for(const b of Object.values(D.bands)){let x=b,n=0;seen.clear();while(x&&x.parentId){if(seen.has(x.id)||n++>20){x.parentId=null;break}seen.add(x.id);x=D.bands[x.parentId]}}
 }
-function fixTree(){fixData();if(!D.tree||!Array.isArray(D.tree.genres))D.tree={genres:[]};for(const g of D.tree.genres){if(!Array.isArray(g.subs))g.subs=[];walk(g.subs,x=>{if(!Array.isArray(x.subs))x.subs=[]})}}
+function fixTree(){fixData();for(const b of Object.values(D.bands||{}))for(const a of b.albums||[])if(a.src==='mb')defCaa(a);if(!D.tree||!Array.isArray(D.tree.genres))D.tree={genres:[]};for(const g of D.tree.genres){if(!Array.isArray(g.subs))g.subs=[];walk(g.subs,x=>{if(!Array.isArray(x.subs))x.subs=[]})}}
 function ownPlaces(b){const out=[];if(G(b.genreId))out.push({g:b.genreId,s:b.subId||null});for(const x of b.also||[])if(G(x.g)&&!out.some(o=>o.g===x.g&&o.s===(x.s||null)))out.push({g:x.g,s:x.s||null});return out}
 // Una relacionada hereda la ubicación de su banda principal y, si se la pones, tiene además la suya propia.
 // En los listados de géneros (LISTING) una relacionada solo aparece suelta en sus ubicaciones propias.
@@ -685,8 +712,12 @@ function mbMatchDates(b,rgs){
 function mbType(rg){const p=rg['primary-type']||'',s=rg['secondary-types']||[];
   if(p==='EP'||p==='Single')return 'single';if(p!=='Album')return 'other';
   if(!s.length)return 'album';if(s.includes('Compilation'))return 'compilation';if(s.includes('Live'))return 'live';return 'other'}
-function mbAlbum(rg){const d=rg['first-release-date']||'',o={id:'mb:'+rg.id,t:rg.title,y:d.slice(0,4),type:mbType(rg),n:0,src:'mb',
-  img:`https://coverartarchive.org/release-group/${rg.id}/front-250`,imgL:`https://coverartarchive.org/release-group/${rg.id}/front-500`};if(d)o.md=d;return o}
+function defCaa(a){if(a.src!=='mb')return;
+  for(const [k,sz] of [['img',250],['imgL',500]]){const d=Object.getOwnPropertyDescriptor(a,k);
+    if(d&&!(typeof d.value==='string'&&d.value.includes('coverartarchive.org')))continue;
+    Object.defineProperty(a,k,{enumerable:false,configurable:true,get(){return `https://coverartarchive.org/release-group/${a.id.slice(3)}/front-${sz}`},set(v){Object.defineProperty(a,k,{value:v,writable:true,enumerable:true,configurable:true})}})}
+  if(a.n===0)delete a.n}
+function mbAlbum(rg){const d=rg['first-release-date']||'',o={id:'mb:'+rg.id,t:rg.title,y:d.slice(0,4),type:mbType(rg),src:'mb'};if(d)o.md=d;defCaa(o);return o}
 async function mbResolve(b){
   if(b.mbid)return b.mbid;
   if(b.sid){const u=await mbGet('/url?resource='+encodeURIComponent('https://open.spotify.com/artist/'+b.sid)+'&inc=artist-rels');
@@ -1187,7 +1218,7 @@ app.addEventListener('click',async e=>{
     case'remindOff':{const st=LS.get('md_remind2',null);if(st){st.dismissed=true;LS.set('md_remind2',st)}render();break}
     case'plOpt':{const k=a.dataset.k,val=a.dataset.v;const nv={...v,[k]:k==='min'?+val:val};const nm=document.getElementById('f_plname');if(nm)nv.name=nm.value;UI.view=nv;render();break}
     case'backup':{const blob=new Blob([JSON.stringify(D)],{type:'application/json'});const url=URL.createObjectURL(blob);const el=document.createElement('a');el.href=url;el.download='spotify-soul-copia-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(el);el.click();el.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);say('Copia descargada.');break}
-    case'restoreYes':{D=UI.restore;UI.restore=null;fixTree();if(cfg.ghToken)LS.set('md_force',1);LS.del('md_base');touch();say('Colección restaurada desde la copia.');go({k:'home'});break}
+    case'restoreYes':{D=UI.restore;UI.restore=null;fixTree();if(cfg.ghToken)LS.set('md_force',1);setBase(null);touch();say('Colección restaurada desde la copia.');go({k:'home'});break}
     case'restoreNo':UI.restore=null;render();break;
     case'sstep':UI.tStep=+a.dataset.n;render();window.scrollTo(0,0);break;
     case'tutorial':go({k:'tutorial',step:0});break;
@@ -1230,7 +1261,7 @@ app.addEventListener('click',async e=>{
     case'syncInfo':{if(UI.syncState==='Sin sincronizar'){say((UI.syncErr||'No se pudo guardar en GitHub.')+' Reintentando ahora…',true);clearTimeout(retryTimer);await pushRemote();if(UI.syncState==='Sincronizado')say('Sincronizado: los cambios ya están guardados en GitHub.')}else if(UI.syncState==='Cambios sin subir'){await pushRemote();say(UI.syncState==='Sincronizado'?'Sincronizado: los cambios ya están guardados en GitHub.':(UI.syncErr||UI.syncState),UI.syncState!=='Sincronizado')}else if(UI.syncState)say(UI.syncState==='Sincronizado'?'Todo guardado en GitHub.':UI.syncState);break}
     case'unignore':{delete D.ignored[a.dataset.sid];touch();say('Esa banda podrá volver a entrar al importar.');break}
     case'unignoreAll':{D.ignored={};touch();say('Todas las bandas excluidas podrán volver a entrar al importar.');break}
-    case'undo':{const u=UI.undo;if(!u)break;for(const b of u.bands){D.bands[b.id]=b;if(b.sid)delete D.ignored[b.sid]}for(const k of u.kids){const c=D.bands[k.id];if(c)c.parentId=k.parentId}UI.undo=null;touch();render();break}
+    case'undo':{const u=UI.undo;if(!u)break;for(const b of u.bands){D.bands[b.id]=b;for(const a of b.albums||[])defCaa(a);if(b.sid)delete D.ignored[b.sid]}for(const k of u.kids){const c=D.bands[k.id];if(c)c.parentId=k.parentId}UI.undo=null;touch();render();break}
     case'addDest':{const val=document.getElementById('f_move').value;if(!val||val==='|'){say('Elige una rama en la lista.',true);return}UI.dests=UI.dests||[];if(!UI.dests.includes(val))UI.dests.push(val);render();break}
     case'rmDest':UI.dests.splice(+a.dataset.i,1);render();break;
     case'addSel':{const ds=getDests();if(!ds.length){say('Elige un destino en la lista.',true);return}let n=0;for(const id of UI.sel){const b=D.bands[id];if(!b)continue;let any=false;for(const d of ds)if(addAlso(b,d.g,d.s))any=true;if(any)n++}UI.dests=[];endSel();touch();say(`${n} añadida${n===1?'':'s'} también a esa rama.`);break}
@@ -1238,7 +1269,7 @@ app.addEventListener('click',async e=>{
     case'showCode':UI.showCode=true;render();break;
     case'copyCode':{const t=document.getElementById('codebox');try{await navigator.clipboard.writeText(t.value);say('Código copiado. Pásatelo al móvil y pégalo allí en Ajustes.')}catch(_){t.select();say('Selecciona el código y cópialo.')}break}
     case'syncNow':{await pushRemote();render();break}
-    case'unsync':cfg.ghToken='';cfg.gistId='';LS.set('md_cfg',cfg);LS.del('md_base');UI.syncState='';UI.showCode=false;render();break;
+    case'unsync':cfg.ghToken='';cfg.gistId='';LS.set('md_cfg',cfg);setBase(null);UI.syncState='';UI.showCode=false;render();break;
     case'moveSel':{const ds=getDests();if(!ds.length){say('Elige un destino en la lista.',true);return}const gg=ds[0].g,ss=ds[0].s;let n=0;const shv=v.k==='sub'?new Set(twins(SG(G(v.g),v.s)).map(t=>t.s.id).concat(v.s)):null;const mh=x=>v.k==='sub'?shv.has(x.s):v.k==='genre'?(x.g===v.g&&!SG(G(v.g),x.s)):true;for(const id of UI.sel){const b=D.bands[id];if(!b)continue;n++;const nw={g:gg,s:ss||null};if(mh({g:b.genreId,s:b.subId})||!G(b.genreId)){b.genreId=nw.g;b.subId=nw.s}else{const ai=(b.also||[]).findIndex(mh);if(ai>=0)b.also[ai]=nw;else{b.genreId=nw.g;b.subId=nw.s}}for(const d of ds.slice(1))addAlso(b,d.g,d.s);b.also=(b.also||[]).filter((x,i,arr)=>!(x.g===b.genreId&&(x.s||null)===(b.subId||null))&&arr.findIndex(y=>y.g===x.g&&(y.s||null)===(x.s||null))===i)}endSel();UI.dests=[];touch();say(`${n} colocada${n===1?'':'s'}`+(ds.length>1?` en ${ds.length} ramas.`:'.'));break}
     case'autoClass':{const m=autoMatches();for(const x of m){x.b.genreId=x.g;x.b.subId=x.s}touch();say(`${m.length} clasificada${m.length===1?'':'s'} por sus géneros de Spotify.`);break}
     case'delGenre':{const n=countIn(v.g);UI.form=null;UI.confirm={w:'genre',msg:n?`Tiene ${n} banda(s); pasarán a “Sin clasificar”. ¿Borrar el género y sus subgéneros?`:'¿Borrar este género y sus subgéneros?'};render();break}
@@ -1288,6 +1319,8 @@ function renderInner(){
   const v=UI.view.k;
   const body=!cfg.clientId?vSetup():v==='genre'?vGenre():v==='sub'?vSub():v==='band'?vBand():v==='forgotten'?vForgotten():v==='favs'?vFavs():v==='rated'||v==='albums'?vAlbums():v==='roulette'?vRoulette():v==='today'?vToday():v==='mkpl'?vMakePlaylist():v==='tutorial'?vTutorial(false):v==='import'?vImport():v==='settings'?vSettings():v==='unclassified'?vUnclassified():vHome();
   let notes='';
+  if(saveErr)notes+=`<div class="notice err"><b>⚠ No se están guardando los cambios en este dispositivo</b> (${esc(saveErr)}). No cierres la app: ${cfg.ghToken?'pulsa “Sincronizar ahora” en Ajustes para subirlos a GitHub, y ':''}avísame del error.</div>`;
+  else if(!IDB.db)notes+=`<div class="notice">Este navegador no deja usar el almacenamiento grande (${esc(IDB.err||'')}); la colección se guarda en el pequeño, de unos 5 MB.</div>`;
   if(cfg.clientId&&!tok&&v!=='settings')notes+=`<div class="notice">Spotify no está conectado. <button class="btn small spot" data-act="login">Conectar</button></div>`;
   if(tok&&Date.now()<spBlocked&&!(UI.msg&&/Spotify/.test(UI.msg.text)))notes+=`<div class="notice err">${esc(spErr({message:'ratelimit'}))}</div>`;
   if(UI.msg)notes+=`<div class="notice${UI.msg.err?' err':''}">${esc(UI.msg.text)}</div>`;
