@@ -67,6 +67,7 @@ img.flag{width:auto!important;height:11px!important;min-width:0!important;flex:n
 .flag.globe{height:auto;box-shadow:none;color:var(--muted)}.flag.globe svg{width:13px;height:13px;vertical-align:-2px}
 .ccline{font-size:13px;color:var(--muted)}.ccline .flag{margin:0 2px 0 0;height:12px}
 .ccf{margin-bottom:0}
+.ssel{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}.ssel .ssug{max-height:260px;overflow:auto}
 .chk.deept{align-self:flex-end;min-height:48px;display:flex;align-items:center;gap:8px}
 .row .name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:500}
 .row .sub{display:block;font-size:12px;color:var(--muted);font-weight:400}
@@ -156,7 +157,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0O';
+const APP_VER='1.0P';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -204,6 +205,8 @@ const rid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).sli
 const J=v=>esc(JSON.stringify(v));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function say(text,err){UI.msg={text,err};formFocused()?bgRender():render();clearTimeout(say.t);say.t=setTimeout(()=>{UI.msg=null;bgRender()},6000)}
+document.addEventListener('focusin',e=>{if(e.target.classList&&e.target.classList.contains('ssq')){try{e.target.select()}catch(_){}ssSuggest(e.target)}});
+document.addEventListener('focusout',e=>{if(e.target.classList&&e.target.classList.contains('ssq')){const inp=e.target;setTimeout(()=>{if(document.activeElement===inp)return;const box=inp.parentNode&&inp.parentNode.querySelector('.ssug');if(box)box.hidden=true;const sel=document.getElementById(inp.dataset.for);if(sel){const o=sel.options[sel.selectedIndex];inp.value=o&&o.value?o.text:''}},250)}});
 let lastTouch=0;['pointerdown','keydown','change','input','focusin'].forEach(ev=>document.addEventListener(ev,()=>{lastTouch=Date.now()},true));
 function formFocused(){const a=document.activeElement;return !!(a&&a.closest&&a.closest('#app')&&(a.tagName==='SELECT'||a.tagName==='TEXTAREA'||(a.tagName==='INPUT'&&!/^(checkbox|radio|button|submit)$/.test(a.type))))}
 let bgRT=null;
@@ -627,6 +630,20 @@ function ccSuggest(q,b){const have=new Set(ccOf(b||{})),f=ccFold(q.trim());let l
     list=all.filter(x=>x.n.startsWith(f)||x.c.toLowerCase()===f||(f==='?'&&x.c==='XX')).concat(all.filter(x=>!x.n.startsWith(f)&&x.c.toLowerCase()!==f&&x.n.includes(f))).map(x=>x.c).slice(0,10)}
   list=list.filter(c=>!have.has(c));
   return list.length?(f?'':'<span class="hint">Más usados:</span>')+list.map(c=>`<button type="button" class="btn small" data-act="ccAdd" data-c="${c}">${flag(c)} ${esc(ccName(c))}</button>`).join(''):(f?'<span class="hint">Ningún país con ese nombre.</span>':'')}
+/* ===== desplegables con buscador: se escribe y salen las coincidencias (el <select> queda oculto y es el que guarda el valor) ===== */
+function ss(html,ph){
+  const id=(html.match(/id="([^"]+)"/)||[])[1]||'',first=(html.match(/<option value="">([^<]*)<\/option>/)||[])[1]||'';
+  const sel=html.match(/<option value="([^"]+)"[^>]*\bselected\b[^>]*>([^<]*)<\/option>/);
+  return `<div class="ssel"><input type="text" class="ssq" data-for="${id}" value="${sel?sel[2]:''}" placeholder="${ph||first||'Escribe para buscar…'}" autocomplete="off"><div class="ssug btns" hidden></div>${html.replace('<select ','<select hidden ')}</div>`}
+function ssSuggest(inp){
+  const sel=document.getElementById(inp.dataset.for),box=inp.parentNode.querySelector('.ssug');if(!sel||!box)return;
+  const f=ccFold(inp.value.trim()),opts=[...sel.options];let list;
+  if(!f)list=opts.filter(o=>!o.value&&o.text&&!/añadir|elegir/i.test(o.text));
+  else{const words=f.split(/\s+/),m=o=>{const t=ccFold(o.text);return words.every(w=>t.includes(w))};
+    const st=opts.filter(o=>o.value&&ccFold(o.text).startsWith(f)),rest=opts.filter(o=>o.value&&!st.includes(o)&&m(o));list=st.concat(rest).slice(0,12)}
+  box.innerHTML=list.length?list.map(o=>`<button type="button" class="btn small" data-act="ssPick" data-for="${inp.dataset.for}" data-v="${esc(o.value)}">${esc(o.text)}</button>`).join(''):(f?'<span class="hint">Nada con ese nombre.</span>':'');
+  box.hidden=!box.innerHTML}
+function ssSync(){document.querySelectorAll('.ssq').forEach(inp=>{const sel=document.getElementById(inp.dataset.for);if(!sel)return;const o=sel.options[sel.selectedIndex];inp.value=o&&o.value?o.text:''})}
 function flag(c){
   if(c==='XW')return `<span class="flag globe" title="Internacional">${GLOBE}</span>`;
   if(c==='XX')return `<span class="flag unk" title="Desconocido">❓</span>`;
@@ -961,7 +978,7 @@ function removeBands(ids){const bs=[],kids=[];for(const id of ids){const b=D.ban
   UI.undo={bands:bs,kids};touch();render()}
 function getDests(){const out=[...(UI.dests||[])];const el=document.getElementById('f_move');const v=el&&el.value;if(v&&v!=='|'&&!out.includes(v))out.push(v);return out.map(d=>{const [g,sb]=d.split('|');return{g,s:sb||null}}).filter(d=>G(d.g))}
 function destChips(){return (UI.dests||[]).map((d,i)=>{const [g,sb]=d.split('|');return `<span class="dest">${esc(pName({g,s:sb||null}))}<button data-act="rmDest" data-i="${i}" aria-label="Quitar">✕</button></span>`}).join('')}
-function selBar(all){const n=(UI.dests||[]).length;return `<div class="bar"><span class="meta" style="font-family:var(--mono);font-size:12px">${UI.sel.size} marcadas</span>${destChips()}${placeSelect('f_move','','',n?'Añadir otra rama…':'Elegir rama…')}<button class="btn small" data-act="addDest" title="Añadir esta rama a la lista">+ Rama</button><button class="btn primary small" data-act="moveSel" ${UI.sel.size?'':'disabled'}>${all?'Mover':'Colocar'}</button>${all?`<button class="btn small" data-act="addSel" ${UI.sel.size?'':'disabled'}>Añadir también</button><button class="btn small" data-act="selAll">Todas</button>${UI.confirmDel?`<span style="flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>¿Quitar ${UI.sel.size} banda${UI.sel.size===1?'':'s'} de tu colección?</b><button class="btn small danger" data-act="delSel">Sí, quitar</button><button class="btn small" data-act="noDel">No</button></span>`:`<button class="btn small danger" data-act="askDel" ${UI.sel.size?'':'disabled'}>Quitar de la colección</button>`}<button class="btn small" data-act="selMode">Cancelar</button>`:`<button class="btn small" data-act="selAll">Todas</button><button class="btn small danger" data-act="delSel" ${UI.sel.size?'':'disabled'}>Quitar de la colección</button>`}<span class="hint" style="flex-basis:100%">${all?'Toca una banda para marcarla o desmarcarla. ':''}Para varias ramas a la vez, elige una y pulsa + Rama; repite y luego ${all?'Mover o Añadir también':'Colocar'}.</span></div>`}
+function selBar(all){const n=(UI.dests||[]).length;return `<div class="bar"><span class="meta" style="font-family:var(--mono);font-size:12px">${UI.sel.size} marcadas</span>${destChips()}${ss(placeSelect('f_move','','',n?'Añadir otra rama…':'Elegir rama…'),'Escribe una rama (p. ej. thrash)…')}<button class="btn small" data-act="addDest" title="Añadir esta rama a la lista">+ Rama</button><button class="btn primary small" data-act="moveSel" ${UI.sel.size?'':'disabled'}>${all?'Mover':'Colocar'}</button>${all?`<button class="btn small" data-act="addSel" ${UI.sel.size?'':'disabled'}>Añadir también</button><button class="btn small" data-act="selAll">Todas</button>${UI.confirmDel?`<span style="flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>¿Quitar ${UI.sel.size} banda${UI.sel.size===1?'':'s'} de tu colección?</b><button class="btn small danger" data-act="delSel">Sí, quitar</button><button class="btn small" data-act="noDel">No</button></span>`:`<button class="btn small danger" data-act="askDel" ${UI.sel.size?'':'disabled'}>Quitar de la colección</button>`}<button class="btn small" data-act="selMode">Cancelar</button>`:`<button class="btn small" data-act="selAll">Todas</button><button class="btn small danger" data-act="delSel" ${UI.sel.size?'':'disabled'}>Quitar de la colección</button>`}<span class="hint" style="flex-basis:100%">${all?'Toca una banda para marcarla o desmarcarla. ':''}Para varias ramas a la vez, elige una y pulsa + Rama; repite y luego ${all?'Mover o Añadir también':'Colocar'}.</span></div>`}
 function vSub(){
   const g=G(UI.view.g),s=SG(g,UI.view.s);if(!s)return fallback();
   const cg=G(UI.view.cg)||g,ct=(UI.view.ct||[]).map(id=>findAny(id)).filter(Boolean);
@@ -1268,10 +1285,10 @@ function formHtml(){
     const banned=new Set([b.id]);let grew=true;while(grew){grew=false;for(const x of bands())if(x.parentId&&banned.has(x.parentId)&&!banned.has(x.id)){banned.add(x.id);grew=true}}
     const parents=`<option value="">— Ninguna (banda principal) —</option>`+bands().filter(x=>!banned.has(x.id)).sort(byName).map(x=>`<option value="${x.id}" ${b.parentId===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
     const parB=b.parentId&&D.bands[b.parentId];
-    return wrap('Mover / editar',`<div id="placeLbl" style="display:flex;flex-direction:column;gap:10px">${parB?`<span class="hint">Como relacionada de ${esc(parB.name)} ya está en su rama. Si además quieres que tenga sus propios géneros, elígelos aquí.</span>`:''}<label>${parB?'Ubicación propia (opcional)':'Ubicación principal'}${placeSelect('f_place',b.genreId,b.subId,parB?'— Solo la de '+parB.name+' —':'')}</label>
+    return wrap('Mover / editar',`<div id="placeLbl" style="display:flex;flex-direction:column;gap:10px">${parB?`<span class="hint">Como relacionada de ${esc(parB.name)} ya está en su rama. Si además quieres que tenga sus propios géneros, elígelos aquí.</span>`:''}<label>${parB?'Ubicación propia (opcional)':'Ubicación principal'}${ss(placeSelect('f_place',b.genreId,b.subId,parB?'— Solo la de '+parB.name+' —':''),parB?'Solo la de '+esc(parB.name)+' (escribe para elegir otra)':'Sin clasificar (escribe una rama)')}</label>
       <div class="section"><span class="hint">También en</span>${(b.also||[]).filter(x=>G(x.g)).length?`<div class="tags">${(b.also||[]).map((x,i)=>G(x.g)?`<button type="button" class="btn small" data-act="rmAlso" data-i="${i}">${esc(pName({g:x.g,s:x.s||null}))} ✕</button>`:'').join('')}</div>`:''}
-      <div class="btns">${placeSelect('f_also','','','Añadir otra rama…')}<button type="button" class="btn small" data-act="addAlso">Añadir</button></div></div></div>
-      <label>Es relacionado de<select id="f_parent">${parents}</select></label>
+      ${ss(placeSelect('f_also','','','Añadir otra rama…'),'Añadir otra rama: escribe (p. ej. black)…')}<button type="button" hidden data-act="addAlso"></button></div></div>
+      <label>Es relacionado de${ss(`<select id="f_parent">${parents}</select>`,'Ninguna (banda principal) · escribe para buscar')}</label>
       <div style="display:flex;flex-direction:column;gap:8px"><span class="hint">País${Array.isArray(b.cc)?' (puesto a mano)':b.mbCountry?' (según MusicBrainz)':''}</span><div class="btns">${ccOf(b).map(c=>`<button type="button" class="btn small" data-act="ccRm" data-c="${c}">${flag(c)} ${esc(ccName(c))} ✕</button>`).join('')||'<span class="hint">Sin país.</span>'}</div>
       <input type="text" id="f_ccq" placeholder="Escribe un país para añadirlo (p. ej. es, alem…)" autocomplete="off"><div class="btns" id="ccsug">${ccSuggest('',b)}</div>${Array.isArray(b.cc)?`<div class="btns"><button type="button" class="btn small" data-act="ccAuto">Volver al de MusicBrainz</button></div>`:''}</div>
       <label>Nota corta<input type="text" id="f_note" value="${esc(b.note||'')}" placeholder="p. ej. antes se llamaban…"></label>
@@ -1369,6 +1386,11 @@ app.addEventListener('click',async e=>{
     case'ccAdd':{const b=D.bands[v.id],c=a.dataset.c;if(!b||!c)return;const cur=ccOf(b).slice();if(!cur.includes(c))cur.push(c);b.cc=cur;touch();render();const q=document.getElementById('f_ccq');if(q){q.value='';const sg=document.getElementById('ccsug');if(sg)sg.innerHTML=ccSuggest('',b)}break}
     case'ccRm':{const b=D.bands[v.id];if(!b)return;b.cc=ccOf(b).filter(x=>x!==a.dataset.c);touch();render();break}
     case'spDismiss':LS.set('md_spdis',spBlocked);render();break;
+    case'ssPick':{const sel=document.getElementById(a.dataset.for);if(!sel)return;sel.value=a.dataset.v;const box=a.closest('.ssug');const inp=box&&box.parentNode.querySelector('.ssq');
+      if(inp){const o=sel.options[sel.selectedIndex];inp.value=o&&o.value?o.text:''}if(box){box.hidden=true;box.innerHTML=''}
+      sel.dispatchEvent(new Event('change',{bubbles:true}));
+      if(sel.id==='f_also'){const b2=app.querySelector('[data-act=addAlso]');if(b2)b2.click()}else if(sel.id==='f_move'){const b2=app.querySelector('[data-act=addDest]');if(b2&&(UI.dests||[]).length)b2.click()}
+      break}
     case'ccNow':mbDown=0;ccLoader();setTimeout(()=>bgRender(),300);break;
     case'ccAuto':{const b=D.bands[v.id];if(!b)return;delete b.cc;touch();render();break}
     case'rtStars':UI.view={...v,stars:+a.dataset.n};render();break;
@@ -1392,7 +1414,7 @@ app.addEventListener('click',async e=>{
       catch(e){say(spErr(e),true)}UI.busy=null;render();break}
     case'selAll':{const l=UI.selIds||[];if(l.every(id=>UI.sel.has(id)))UI.sel.clear();else l.forEach(id=>UI.sel.add(id));render();break}
     case'rmAlso':{const b=D.bands[v.id];b.also.splice(+a.dataset.i,1);touch();render();break}
-    case'addAlso':{const b=D.bands[v.id],[gg,ss]=(document.getElementById('f_also').value||'|').split('|');if(!gg)return;{const f0=document.getElementById('f_place');if(f0){const [pg,ps]=(f0.value||'|').split('|');b.genreId=pg||null;b.subId=ps||null}}if(!addAlso(b,gg,ss))say('Ya está en esa rama.',true);touch();render();const fp=document.getElementById('f_place');if(fp)fp.value=(b.genreId||'')+'|'+(b.subId||'');if(fp&&fp.selectedIndex<0)fp.value='';break}
+    case'addAlso':{const b=D.bands[v.id],[gg,ss]=(document.getElementById('f_also').value||'|').split('|');if(!gg)return;{const f0=document.getElementById('f_place');if(f0){const [pg,ps]=(f0.value||'|').split('|');b.genreId=pg||null;b.subId=ps||null}}if(!addAlso(b,gg,ss))say('Ya está en esa rama.',true);touch();render();{const fa=document.getElementById('f_also');if(fa)fa.value=''}const fp=document.getElementById('f_place');if(fp)fp.value=(b.genreId||'')+'|'+(b.subId||'');if(fp&&fp.selectedIndex<0)fp.value='';ssSync();break}
     case'selMode':UI.selMode?exitSel():enterSel(null);break;
     case'askDel':UI.confirmDel=true;render();break;
     case'noDel':UI.confirmDel=false;render();break;
@@ -1447,8 +1469,8 @@ app.addEventListener('change',e=>{
   if(e.target.id==='f_rtplace'){UI.view={...UI.view,place:e.target.value};render();return}
 });
 app.addEventListener('submit',e=>{e.preventDefault();submitForm(e.target.id)});
-app.addEventListener('keydown',e=>{if(e.target.id==='f_ccq'&&e.key==='Enter'){e.preventDefault();const first=document.querySelector('#ccsug [data-act=ccAdd]');if(first&&e.target.value.trim())first.click()}});
-app.addEventListener('input',e=>{if(e.target.id==='f_ccq'){const sg=document.getElementById('ccsug');if(sg)sg.innerHTML=ccSuggest(e.target.value,D.bands[UI.view.id]);return}if(e.target.id==='q'){UI.q=e.target.value;const pos=e.target.selectionStart;render();const q=document.getElementById('q');if(q){q.focus();try{q.setSelectionRange(pos,pos)}catch(_){}}}});
+app.addEventListener('keydown',e=>{if(e.target.classList&&e.target.classList.contains('ssq')&&e.key==='Enter'){e.preventDefault();const f=e.target.parentNode.querySelector('.ssug [data-act=ssPick]');if(f)f.click();return}if(e.target.id==='f_ccq'&&e.key==='Enter'){e.preventDefault();const first=document.querySelector('#ccsug [data-act=ccAdd]');if(first&&e.target.value.trim())first.click()}});
+app.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('ssq')){ssSuggest(e.target);return}if(e.target.id==='f_ccq'){const sg=document.getElementById('ccsug');if(sg)sg.innerHTML=ccSuggest(e.target.value,D.bands[UI.view.id]);return}if(e.target.id==='q'){UI.q=e.target.value;const pos=e.target.selectionStart;render();const q=document.getElementById('q');if(q){q.focus();try{q.setSelectionRange(pos,pos)}catch(_){}}}});
 
 /* ================= render ================= */
 function syncIcon(){const st=UI.syncState,c='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.1 4.7 4.7 0 0 0 7 18.5z"/>';
@@ -1473,6 +1495,7 @@ function renderInner(){
   const n=bands().length;
   app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt=""><span class="bt"><span class="nm">Spoti<em>Soul</em></span><small class="ver">v${APP_VER}</small></span></button><div class="btns"><button class="sync ic${UI.syncState==='Sin sincronizar'?' bad':''}" id="syncst" data-act="syncInfo" ${UI.syncState?'':'hidden'} title="${esc(UI.syncErr||UI.syncState)}" aria-label="${esc(UI.syncState)}">${syncIcon()}</button>${cfg.clientId?`<button class="btn small ic" data-act="tutorial" aria-label="Ayuda y tutorial" title="Ayuda">?</button><button class="btn small ic" data-act="settings" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
   for(const id in keep){const el=document.getElementById(id);if(el&&el.type!=='checkbox')el.value=keep[id]}
+  ssSync();
 }
 
 /* ================= arranque ================= */
