@@ -131,6 +131,10 @@ progress{width:100%}
 #bg.on .cv{opacity:.9}
 #bg .sh{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,10,9,.30) 0%,rgba(8,10,9,.55) 45%,rgba(8,10,9,.78) 100%);opacity:0;transition:opacity .6s ease}
 #bg.on .sh{opacity:1}
+#bg.gen .cv{inset:0;height:auto;filter:none;transform:none;background-position:center 18%}
+#bg.gen.on .cv{opacity:1}
+#bg.gen .sh{background:linear-gradient(180deg,rgba(8,10,9,.62) 0%,rgba(8,10,9,.38) 28%,rgba(8,10,9,.62) 60%,rgba(8,10,9,.86) 100%)}
+@media (max-width:700px){#bg.gen .cv{inset:0;height:auto;filter:none;background-position:center top}#bg.gen .sh{background:linear-gradient(180deg,rgba(8,10,9,.62) 0%,rgba(8,10,9,.35) 30%,rgba(8,10,9,.60) 62%,rgba(8,10,9,.86) 100%)}}
 .wrap{position:relative;z-index:1}
 .btn{background:rgba(255,255,255,.06)}
 .btn.primary{background:var(--accent)}
@@ -157,7 +161,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.0T';
+const APP_VER='1.0U';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -1488,7 +1492,13 @@ function syncIcon(){const st=UI.syncState,c='<svg viewBox="0 0 24 24" width="22"
   return c+(st==='Sincronizado'?'<path d="M9.3 13.6l1.9 1.9 3.6-3.6"/>':st==='Cambios sin subir'?'<path d="M12 16v-4.5M9.8 13.4 12 11.2l2.2 2.2"/>':st==='Sincronizando…'?'<path d="M9.5 14h.01M12 14h.01M14.5 14h.01" stroke-width="2.6"/>':'<path d="M10 12l4 4M14 12l-4 4"/>')+'</svg>'}
 function renderSync(){const s=document.getElementById('syncst');if(s){s.innerHTML=syncIcon();s.hidden=!UI.syncState;s.title=UI.syncErr||UI.syncState;s.setAttribute('aria-label',UI.syncState);s.classList.toggle('bad',UI.syncState==='Sin sincronizar');s.classList.toggle('pend',UI.syncState==='Cambios sin subir'||UI.syncState==='Sincronizando…')}}
 function bandCover(b){const al=(b.albums||[]).filter(a=>a.img&&!(b.hidden||[]).includes(a.id)),pk=new Set(b.picked||[]),mine=al.filter(a=>pk.has(a.id)),pool=mine.length?mine:al.filter(a=>a.type!=='single').length?al.filter(a=>a.type!=='single'):al;if(!pool.length)return b.imgL||b.img||'';const a=pool[Math.floor((UI.bgPick||0)*pool.length)%pool.length];return a.imgL||a.img}
-function paintBg(){const el=document.getElementById('bg');if(!el)return;const b=UI.view.k==='band'&&D.bands[UI.view.id];const url=b?bandCover(b):'';const cv=el.firstElementChild;
+// ilustraciones de géneros (carpeta generos/, nombre del archivo = nombre de la rama). Un subgénero sin ilustración usa la de la rama de la que cuelga.
+const GEN_IMG=['folk-metal','metal','nwobhm','power-metal','speed-metal','symphonic-metal','heavy-metal','metal-en-espanol'];
+const gslug=n=>ccFold(n).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+function genreImg(){const v=UI.view;if(v.k!=='genre'&&v.k!=='sub')return'';const g=G(v.g);if(!g)return'';
+  const chain=v.k==='sub'?[g,...(subPath(g,v.s)||[])]:[g];
+  for(const n of chain.reverse()){const sl=gslug(n&&n.name);if(GEN_IMG.includes(sl))return'generos/'+sl+'.jpg'}return''}
+function paintBg(){const el=document.getElementById('bg');if(!el)return;const b=UI.view.k==='band'&&D.bands[UI.view.id];const url=b?bandCover(b):genreImg();el.classList.toggle('gen',!b&&!!url);const cv=el.firstElementChild;
   if(url){const css=`url("${url.replace(/"/g,'%22')}")`;if(cv.style.backgroundImage!==css)cv.style.backgroundImage=css;el.classList.add('on')}else el.classList.remove('on')}
 function render(){try{renderInner();paintBg()}catch(e){showFatal(e)}}
 function renderInner(){
