@@ -166,7 +166,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.1.4';
+const APP_VER='1.1.5';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -738,8 +738,8 @@ const LINK_IC='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" strok
 function bandRow(b,showPath){
   if(!b.img&&b.sid)UI.visible.add(b.id);
   const n=(b.albums||[]).filter(a=>a.type==='album').length,pk=(b.picked||[]).length,rel=children(b.id).length,pl=placeOf(b);
-  const par=b.parentId&&D.bands[b.parentId],meta=showPath?((placeName(b)||'sin clasificar')+(places(b).length>1?` +${places(b).length-1}`:'')):(par?`rel. de ${par.name}`:(b.fetchedAt?(pk?`${pk}/${n}`:`${n}`):''));
-  const relH=!showPath&&!par&&rel?`${meta?' · ':''}<span class="relc" title="${rel} relacionada${rel===1?'':'s'}">${LINK_IC}${rel}</span>`:'';
+  const par=b.parentId&&D.bands[b.parentId],meta=showPath?((placeName(b)||'sin clasificar')+(places(b).length>1?` +${places(b).length-1}`:'')):(b.fetchedAt?(pk?`${pk}/${n}`:`${n}`):'');
+  const relH=showPath?'':par?`${meta?' · ':''}<span class="relc" title="Relacionada de ${esc(par.name)}">${LINK_IC}</span>`:rel?`${meta?' · ':''}<span class="relc" title="${rel} relacionada${rel===1?'':'s'}">${LINK_IC}${rel}</span>`:'';
   return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}${flags(b)}</span><span class="meta">${esc(meta)}${relH}</span></button>`;
 }
 const TUT=[
