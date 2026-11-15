@@ -63,6 +63,7 @@ button.row:hover,a.row:hover{background:var(--tab)}
 img.flag{width:auto!important;height:11px!important;min-width:0!important;flex:none!important;object-fit:contain;border-radius:2px!important}
 .ccline img.flag{height:12px!important}
 .flag.txt{height:auto;font-family:var(--mono);font-size:10px;padding:0 3px;color:var(--muted);box-shadow:0 0 0 1px var(--line)}
+.relc{display:inline-flex;align-items:center;gap:2px;white-space:nowrap}.relc svg{vertical-align:-2px}
 .flag.unk{height:auto;font-size:12px;line-height:1;box-shadow:none}
 .flag.globe{height:auto;box-shadow:none;color:var(--muted)}.flag.globe svg{width:13px;height:13px;vertical-align:-2px}
 .ccline{font-size:13px;color:var(--muted)}.ccline .flag{margin:0 2px 0 0;height:12px}
@@ -165,7 +166,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.1.3';
+const APP_VER='1.1.4';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -733,11 +734,13 @@ async function ccLoader(){
       catch(e){if(e.message==='mbdown')break}}
     if(n)touch();
   }finally{ccRunning=false;bgRender()}}
+const LINK_IC='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.5a4 4 0 0 0 6 .4l2.8-2.8a4 4 0 0 0-5.7-5.7l-1.2 1.2"/><path d="M14 10.5a4 4 0 0 0-6-.4l-2.8 2.8a4 4 0 0 0 5.7 5.7l1.2-1.2"/></svg>';
 function bandRow(b,showPath){
   if(!b.img&&b.sid)UI.visible.add(b.id);
   const n=(b.albums||[]).filter(a=>a.type==='album').length,pk=(b.picked||[]).length,rel=children(b.id).length,pl=placeOf(b);
-  const par=b.parentId&&D.bands[b.parentId],meta=showPath?((placeName(b)||'sin clasificar')+(places(b).length>1?` +${places(b).length-1}`:'')):(par?`rel. de ${par.name}`:(b.fetchedAt?(pk?`${pk} de ${n} discos`:`${n} disco${n===1?'':'s'}`):'')+(rel?` · ${rel} rel.`:''));
-  return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}${flags(b)}</span><span class="meta">${esc(meta)}</span></button>`;
+  const par=b.parentId&&D.bands[b.parentId],meta=showPath?((placeName(b)||'sin clasificar')+(places(b).length>1?` +${places(b).length-1}`:'')):(par?`rel. de ${par.name}`:(b.fetchedAt?(pk?`${pk}/${n}`:`${n}`):''));
+  const relH=!showPath&&!par&&rel?`${meta?' · ':''}<span class="relc" title="${rel} relacionada${rel===1?'':'s'}">${LINK_IC}${rel}</span>`:'';
+  return `<button class="row" data-go="${J({k:'band',id:b.id})}">${thumb(b.img)}<span class="name">${b.fav?'<span class="heart">♥</span> ':''}${esc(b.name)}${flags(b)}</span><span class="meta">${esc(meta)}${relH}</span></button>`;
 }
 const TUT=[
  ['Bienvenido a SpotiSoul',()=>`<p>Ordena tu música de Spotify como tus carpetas de siempre: <b>Género / Subgénero / Banda / Año – Disco</b>. Tú decides el árbol; Spotify pone la música.</p>
