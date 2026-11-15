@@ -166,7 +166,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.1.5';
+const APP_VER='1.1.6';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -552,9 +552,10 @@ async function fetchDisco(b,force){
   }
   const prev=b.albums||[],fresh=[...seen.values()];
   const oldMd={};for(const a of prev)if(a.md)oldMd[a.id]=a.md;
-  if(b.src==='mb'){transferMarks(b,prev,fresh);for(const o of prev){const n=fresh.find(x=>mbNorm(x.t)===mbNorm(o.t));if(n&&o.md&&!oldMd[n.id])oldMd[n.id]=o.md}}
+  const pr=pairDiscs(prev,fresh);
+  if(b.src==='mb'){transferMarks(b,prev,fresh);for(const [o,n] of pr)if(o.md&&!oldMd[n.id])oldMd[n.id]=o.md}
   const oldSingles=prev.filter(a=>a.type==='single'&&a.src!=='mb'&&!seen.has(a.id));
-  const mbOnly=prev.filter(a=>a.src==='mb'&&a.type==='album'&&!fresh.some(x=>mbNorm(x.t)===mbNorm(a.t)));
+  const mbOnly=prev.filter(a=>a.src==='mb'&&a.type==='album'&&!pr.has(a));
   b.albums=[...fresh,...mbOnly,...oldSingles];for(const a of b.albums)if(oldMd[a.id])a.md=oldMd[a.id];
   delete b.src;
   b.fetchedAt=Date.now();touch();spPhoto(b);if(b.mbid&&!b.mbDates)mbSync(b).then(ok=>{if(ok&&UI.view.k==='band'&&UI.view.id===b.id)render()}).catch(()=>{});return true;
@@ -572,8 +573,8 @@ async function spResolve(b,a){
   const r=await sp('/search?type=album&limit=10&q='+encodeURIComponent(q));
   let items=((r&&r.albums&&r.albums.items)||[]).filter(Boolean);
   if(b.sid)items=items.filter(x=>(x.artists||[]).some(ar=>ar.id===b.sid));
-  const k=mbNorm(a.t),y=+(a.y||0);
-  items=items.filter(x=>mbNorm(x.name)===k);
+  const k=mbNorm(a.t),y=+(a.y||0),pm=pairDiscs([a],items).get(a);
+  items=pm?[pm]:[];
   const sc=x=>(x.album_type==='album'?0:5)+(y?Math.min(Math.abs((+(x.release_date||'').slice(0,4)||y)-y),30)/10:0);
   items.sort((p,q)=>sc(p)-sc(q));
   if(items[0]){a.spid=items[0].id;touch();return a.spid}
@@ -623,7 +624,7 @@ function albumRow(b,a,o={}){
   const ybox=editing?`<form id="frm" class="yf"><input type="text" id="f_y" inputmode="numeric" maxlength="4" value="${esc(y)}" aria-label="Año"><button class="btn small" type="submit">OK</button><button class="btn small" type="button" data-act="cancel" aria-label="Cancelar">✕</button></form>`
     :`<button class="yrb${ed?' ed':''}" data-act="editYear" data-b="${b.id}" data-a="${esc(a.id)}" title="${esc(src)}">${esc(y||'—')}${ed?'*':''}</button>`;
   const D_=`data-b="${b.id}" data-a="${esc(a.id)}"`;
-  return `<div class="row al">${a.img?`<img src="${esc(a.img)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`:''}<div class="name"><a class="at" ${spHref(b,a)} target="_blank" rel="noopener">${esc(a.t)}</a>`+
+  return `<div class="row al">${a.img?`<img src="${esc(a.img)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`:''}<div class="name"><a class="at" ${spHref(b,a)} target="_blank" rel="noopener">${esc(a.t)}${a.dis?` <span style="color:var(--muted);font-weight:400">(${esc(a.dis)})</span>`:''}</a>`+
    (o.showBand?`<div><button class="yrb" data-go="${J({k:'band',id:b.id})}" style="font-family:var(--body);color:var(--fg);font-weight:500">${esc(b.name)}</button>${o.showPlace&&placeName(b)?` <span style="font-size:12px;color:var(--muted)">· ${esc(placeName(b))}</span>`:''}</div>`:'')+
    `<div class="arow">${ybox}<span class="stars" role="group" aria-label="Valoración">${[1,2,3,4,5].map(n=>`<button data-act="rate" ${D_} data-n="${n}" class="${n<=r?'on':''}" aria-label="${n} estrella${n>1?'s':''}">★</button>`).join('')}</span>`+
    `<button class="pill pend${pend?' on':''}" data-act="pend" ${D_} aria-pressed="${pend}">${pend?'Pendiente':'+ Pendiente'}</button>`+
@@ -857,9 +858,24 @@ async function mbGet(path,tries=0){
   return r.json();
 }
 const mbNorm=t=>norm(t).replace(/\s*[\(\[][^\)\]]*[\)\]]/g,'').replace(/\s+-\s+.*(remaster|deluxe|edition|version|anniversary|live|edición|reedición).*$/,'').replace(/[^a-z0-9\u00c0-\u024f]+/g,' ').trim();
+// Emparejar discos entre fuentes. La clave quita solo las coletillas de edición (Remastered, Deluxe…): "Weezer (Blue Album)" ≠ "Weezer (Green Album)".
+// Si no hay coincidencia exacta, se usa el título sin paréntesis, pero solo si no hay duda (único, o el único con el mismo año ±1).
+const edNorm=t=>norm(t).replace(/\s*[\(\[]([^\)\]]*)[\)\]]/g,(m,i)=>/remaster|deluxe|edition|edici|version|versi.n|expanded|anniversary|aniversario|mono|stereo|bonus|reissue|reedici|\blive\b|en vivo|^\s*\d{4}\s*$/i.test(i)?'':' '+i).replace(/\s+-\s+.*(remaster|deluxe|edition|version|anniversary|live|edición|reedición).*$/,'').replace(/[^a-z0-9À-ɏ]+/g,' ').trim();
+const tTitle=x=>x.t||x.title||x.name||'',tDis=x=>x.dis||x.disambiguation||'';
+const tKey=x=>edNorm(tTitle(x)+(tDis(x)?' ('+tDis(x)+')':'')),tBase=x=>mbNorm(tTitle(x));
+const tYear=x=>+String(x.y||x['first-release-date']||x.release_date||'').slice(0,4)||0;
+function pairDiscs(A,B){const out=new Map(),used=new Set(),byK=new Map();
+  for(const b of B){const k=tKey(b);if(!byK.has(k))byK.set(k,[]);byK.get(k).push(b)}
+  for(const a of A){const c=(byK.get(tKey(a))||[]).filter(b=>!used.has(b));if(!c.length)continue;const ya=tYear(a);c.sort((p,q)=>Math.abs(tYear(p)-ya)-Math.abs(tYear(q)-ya));out.set(a,c[0]);used.add(c[0])}
+  for(const a of A){if(out.has(a))continue;const k=tBase(a);if(!k)continue;
+    const cand=B.filter(b=>!used.has(b)&&tBase(b)===k);if(!cand.length)continue;
+    const sameA=A.filter(x=>!out.has(x)&&tBase(x)===k),ya=tYear(a);let pick=null;
+    if(cand.length===1&&sameA.length===1)pick=cand[0];else{const near=cand.filter(b=>ya&&tYear(b)&&Math.abs(tYear(b)-ya)<=1);if(near.length===1)pick=near[0]}
+    if(pick){out.set(a,pick);used.add(pick)}}
+  return out}
 function mbMatchDates(b,rgs){
-  const idx=new Map();for(const g of rgs){const d=g['first-release-date'];if(!d)continue;const k=mbNorm(g.title);if(k&&(!idx.has(k)||d<idx.get(k)))idx.set(k,d)}
-  let n=0;for(const a of b.albums||[]){const d=idx.get(mbNorm(a.t));
+  const pairs=pairDiscs(b.albums||[],rgs.filter(g=>g['first-release-date']));
+  let n=0;for(const a of b.albums||[]){const g=pairs.get(a),d=g&&g['first-release-date'];
     if(d&&(!a.y||+d.slice(0,4)<=+a.y+1)){if(a.md!==d){a.md=d;n++}}
     else if(a.md){delete a.md;n++}}
   return n}
@@ -871,7 +887,7 @@ function defCaa(a){if(a.src!=='mb')return;
     if(d&&!(typeof d.value==='string'&&d.value.includes('coverartarchive.org')))continue;
     Object.defineProperty(a,k,{enumerable:false,configurable:true,get(){return `https://coverartarchive.org/release-group/${a.id.slice(3)}/front-${sz}`},set(v){Object.defineProperty(a,k,{value:v,writable:true,enumerable:true,configurable:true})}})}
   if(a.n===0)delete a.n}
-function mbAlbum(rg){const d=rg['first-release-date']||'',o={id:'mb:'+rg.id,t:rg.title,y:d.slice(0,4),type:mbType(rg),src:'mb'};if(d)o.md=d;defCaa(o);return o}
+function mbAlbum(rg){const d=rg['first-release-date']||'',o={id:'mb:'+rg.id,t:rg.title,y:d.slice(0,4),type:mbType(rg),src:'mb'};if(rg.disambiguation)o.dis=rg.disambiguation;if(d)o.md=d;defCaa(o);return o}
 const mbResolving=new Map();
 function mbResolve(b){if(b.mbid)return Promise.resolve(b.mbid);if(!mbResolving.has(b.id))mbResolving.set(b.id,mbResolve0(b).finally(()=>mbResolving.delete(b.id)));return mbResolving.get(b.id)}
 async function mbResolve0(b){
@@ -895,8 +911,7 @@ async function mbDisco(b){
   b.src='mb';b.fetchedAt=Date.now();b.mbDates=Date.now();delete b.mbNone;delete b.mbWhy;touch();return true}
 // Marcas, estrellas, formatos… pasan de los discos viejos a los nuevos con el mismo título
 function transferMarks(b,oldA,newA){
-  const by=new Map();for(const n of newA){const k=mbNorm(n.t);if(!by.has(k))by.set(k,n.id)}
-  const map={};for(const o of oldA){const n=by.get(mbNorm(o.t));if(n)map[o.id]=n}
+  const pr=pairDiscs(oldA,newA),map={};for(const [o,n] of pr)map[o.id]=n.id;
   const arr=k=>{if(b[k])b[k]=[...new Set(b[k].map(id=>map[id]||id))]};arr('picked');arr('pend');arr('hidden');
   const obj=k=>{if(!b[k])return;const o={};for(const [id,v] of Object.entries(b[k]))o[map[id]||id]=v;b[k]=o};obj('ratings');obj('fmt');obj('years')}
 async function mbSync(b,force){
@@ -921,9 +936,8 @@ async function mbSync(b,force){
     const all=await mbBrowse(b.mbid,'album|ep');if(all.length)rgs=all;
     mbMatchDates(b,rgs);
     // completar: álbumes de estudio que MusicBrainz tiene y Spotify no
-    const have=new Set(b.albums.map(a=>mbNorm(a.t))),today=new Date().toISOString().slice(0,10);
-    for(const rg of rgs){const d=rg['first-release-date'];if(mbType(rg)!=='album'||!d||d>today)continue;
-      const k=mbNorm(rg.title);if(!k||have.has(k)||b.albums.some(a=>a.id==='mb:'+rg.id))continue;b.albums.push(mbAlbum(rg));have.add(k)}
+    const today=new Date().toISOString().slice(0,10),studio=rgs.filter(rg=>mbType(rg)==='album'&&rg['first-release-date']&&rg['first-release-date']<=today),got=pairDiscs(studio,b.albums);
+    for(const rg of studio){if(got.has(rg)||b.albums.some(a=>a.id==='mb:'+rg.id))continue;b.albums.push(mbAlbum(rg))}
     b.mbDates=Date.now()}
   b.mbAt=Date.now();touch();return true;
 }
@@ -1444,8 +1458,8 @@ app.addEventListener('click',async e=>{
     case'favBand':{const b=D.bands[v.id];b.fav=!b.fav;touch();render();break}
     case'favOnly':UI.favOnly=!UI.favOnly;render();break;
     case'loadSim':loadSim(D.bands[v.id]);render();break;
-    case'refetch':{const b=D.bands[v.id];UI.busy='Actualizando discografía…';render();try{if(b.src==='mb'){if(!await mbDisco(b))say('MusicBrainz no ha devuelto discos para esta banda.',true)}else await fetchDisco(b,true)}catch(err){say(b.src==='mb'?'MusicBrainz no responde ahora mismo; prueba más tarde.':spErr(err),true)}UI.busy=null;render();break}
-    case'useSpotify':{const b=D.bands[v.id];if(!tok){say('Conecta Spotify en Ajustes.',true);return}UI.busy='Cargando discografía de Spotify…';render();try{await fetchDisco(b,true);delete b.mbNone;touch();say('Discografía cargada desde Spotify. Tus marcas se han pasado a los discos con el mismo título.')}catch(err){say(spErr(err),true)}UI.busy=null;render();break}
+    case'refetch':{const b=D.bands[v.id];UI.busy='Actualizando discografía…';render();try{if(b.src==='mb'){if(!await mbDisco(b))say('MusicBrainz no ha devuelto discos para esta banda.',true)}else{await fetchDisco(b,true);b.mbDates=0;mbSync(b).then(()=>{touch();bgRender()}).catch(()=>{})}}catch(err){say(b.src==='mb'?'MusicBrainz no responde ahora mismo; prueba más tarde.':spErr(err),true)}UI.busy=null;render();break}
+    case'useSpotify':{const b=D.bands[v.id];if(!tok){say('Conecta Spotify en Ajustes.',true);return}UI.busy='Cargando discografía de Spotify…';render();try{await fetchDisco(b,true);delete b.mbNone;b.mbDates=0;mbSync(b).then(()=>{touch();bgRender()}).catch(()=>{});touch();say('Discografía cargada desde Spotify. Tus marcas se han pasado a los discos con el mismo título.')}catch(err){say(spErr(err),true)}UI.busy=null;render();break}
     case'toggleExtra':UI.showExtra=!UI.showExtra;render();break;
     case'pick':{const b=D.bands[a.dataset.b||v.id],id=a.dataset.a,set=new Set(b.picked||[]);if(!set.size||UI.fullDisco)UI.fullDisco=true;set.has(id)?set.delete(id):set.add(id);b.picked=[...set];touch();render();break}
     case'rate':{const b=D.bands[a.dataset.b||v.id],id=a.dataset.a,n=+a.dataset.n;b.ratings=b.ratings||{};if(b.ratings[id]===n)delete b.ratings[id];else b.ratings[id]=n;touch();render();break}
