@@ -67,7 +67,11 @@ img.flag{width:auto!important;height:11px!important;min-width:0!important;flex:n
 .flag.globe{height:auto;box-shadow:none;color:var(--muted)}.flag.globe svg{width:13px;height:13px;vertical-align:-2px}
 .ccline{font-size:13px;color:var(--muted)}.ccline .flag{margin:0 2px 0 0;height:12px}
 .ccf{margin-bottom:0}
-.ssel{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}.ssel .ssug{max-height:260px;overflow:auto}
+.ssel{display:flex;flex-direction:column;gap:6px;flex:1 1 220px;min-width:0}
+.ssel .ssq{width:100%}
+.ssel .ssug{max-height:260px;overflow:auto;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:4px}
+.ssel .ssug .btn{width:100%;text-align:left;justify-content:flex-start;white-space:normal;border-radius:10px;line-height:1.25}
+.bar .ssel{flex:1 1 100%;order:1}.bar>.btn,.bar>a.btn,.bar>.hint,.bar>span:not(.meta):not(.dest){order:2}
 .chk.deept{align-self:flex-end;min-height:48px;display:flex;align-items:center;gap:8px}
 .row .name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:500}
 .row .sub{display:block;font-size:12px;color:var(--muted);font-weight:400}
@@ -161,7 +165,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.1';
+const APP_VER='1.1.1';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
