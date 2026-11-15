@@ -170,7 +170,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.2.3';
+const APP_VER='1.2.4';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -1522,7 +1522,7 @@ app.addEventListener('click',async e=>{
       D.addPl={id:m[1],name};touch();say(`Lista «${name}» guardada.`);break}
     case'clearAddPl':D.addPl=null;touch();render();break;
     case'impAddPl':{if(!D.addPl)return;const pl=D.addPl;
-      runImport(`Leyendo «${pl.name}»…`,async()=>{let added=0;const items=await spAll(`/playlists/${pl.id}/items?limit=50`);for(const it of items){const t=it&&(it.item||it.track);for(const ar of (t&&t.artists)||[]){if(ar&&ar.id&&addArtist(ar).isNew){added++}break}}return added});break}
+      runImport(`Leyendo «${pl.name}»…`,async()=>{let added=0;const items=await spAll(`/playlists/${pl.id}/items?limit=50`);for(const it of items){const t=it&&(it.item||it.track);for(const ar of (t&&t.artists)||[]){if(ar&&ar.id&&addArtist(ar,{},true).isNew){added++}break}}return added});break}
     case'fetchAll':{const list=bands().filter(b=>b.sid&&!b.fetchedAt);if(!list.length){say('Todas las discografías están cargadas.');return}
       UI.busy=`Cargando discografías… 0/${list.length}`;render();let i=0;
       let stop=null;for(const b of list){try{await fetchDisco(b)}catch(err){if(err.message==='nologin'||err.message==='ratelimit'){stop=err;break}}i++;UI.busy=`Cargando discografías… ${i}/${list.length}`;renderBusy();await sleep(400)}
