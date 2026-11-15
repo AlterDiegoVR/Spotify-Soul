@@ -170,7 +170,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.2';
+const APP_VER='1.2.1';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -1338,15 +1338,14 @@ function formHtml(){
     const banned=new Set([b.id]);let grew=true;while(grew){grew=false;for(const x of bands())if(x.parentId&&banned.has(x.parentId)&&!banned.has(x.id)){banned.add(x.id);grew=true}}
     const parents=`<option value="">— Ninguna (banda principal) —</option>`+bands().filter(x=>!banned.has(x.id)).sort(byName).map(x=>`<option value="${x.id}" ${b.parentId===x.id?'selected':''}>${esc(x.name)}</option>`).join('');
     const parB=b.parentId&&D.bands[b.parentId];
-    return wrap('Mover / editar',`<div id="placeLbl" style="display:flex;flex-direction:column;gap:10px">${parB?`<span class="hint">Como relacionada de ${esc(parB.name)} ya está en su rama. Si además quieres que tenga sus propios géneros, elígelos aquí.</span>`:''}<label>${parB?'Ubicación propia (opcional)':'Ubicación principal'}${ss(placeSelect('f_place',b.genreId,b.subId,parB?'— Solo la de '+parB.name+' —':''),parB?'Solo la de '+esc(parB.name)+' (escribe para elegir otra)':'Sin clasificar (escribe una rama)')}</label>
+    return wrap('Editar',`<button class="btn danger small" type="button" data-act="askDelBand" style="align-self:flex-start">Quitar de mi colección</button><div id="placeLbl" style="display:flex;flex-direction:column;gap:10px">${parB?`<span class="hint">Como relacionada de ${esc(parB.name)} ya está en su rama. Si además quieres que tenga sus propios géneros, elígelos aquí.</span>`:''}<label>${parB?'Ubicación propia (opcional)':'Ubicación principal'}${ss(placeSelect('f_place',b.genreId,b.subId,parB?'— Solo la de '+parB.name+' —':''),parB?'Solo la de '+esc(parB.name)+' (escribe para elegir otra)':'Sin clasificar (escribe una rama)')}</label>
       <div class="section"><span class="hint">También en</span>${(b.also||[]).filter(x=>G(x.g)).length?`<div class="tags">${(b.also||[]).map((x,i)=>G(x.g)?`<button type="button" class="btn small" data-act="rmAlso" data-i="${i}">${esc(pName({g:x.g,s:x.s||null}))} ✕</button>`:'').join('')}</div>`:''}
       ${ss(placeSelect('f_also','','','Añadir otra rama…'),'Añadir otra rama: escribe (p. ej. black)…')}<button type="button" hidden data-act="addAlso"></button></div></div>
       <label>Es relacionado de${ss(`<select id="f_parent">${parents}</select>`,'Ninguna (banda principal) · escribe para buscar')}</label>
       <div style="display:flex;flex-direction:column;gap:8px"><span class="hint">País${Array.isArray(b.cc)?' (puesto a mano)':b.mbCountry?' (según MusicBrainz)':''}</span><div class="btns">${ccOf(b).map(c=>`<button type="button" class="btn small" data-act="ccRm" data-c="${c}">${flag(c)} ${esc(ccName(c))} ✕</button>`).join('')||'<span class="hint">Sin país.</span>'}</div>
       <input type="text" id="f_ccq" placeholder="Escribe un país para añadirlo (p. ej. es, alem…)" autocomplete="off"><div class="btns" id="ccsug">${ccSuggest('',b)}</div>${Array.isArray(b.cc)?`<div class="btns"><button type="button" class="btn small" data-act="ccAuto">Volver al de MusicBrainz</button></div>`:''}</div>
       <label>Nota corta<input type="text" id="f_note" value="${esc(b.note||'')}" placeholder="p. ej. antes se llamaban…"></label>
-      <label>Enlace de Rate Your Music<input type="url" id="f_rym" value="${esc(b.rym||'')}" placeholder="https://rateyourmusic.com/artist/${esc(rymSlug(b.name))}"></label><span class="hint">Si el botón abre una ficha equivocada, pega aquí la correcta. Si la banda no está en Rate Your Music, puedes poner cualquier otra web (Metal Archives, Wikipedia, Bandcamp…). Vacío = la automática.</span>
-      <button class="btn danger small" type="button" data-act="askDelBand" style="align-self:flex-start">Quitar de mi colección</button>`,'Guardar');
+      <label>Enlace de Rate Your Music<input type="url" id="f_rym" value="${esc(b.rym||'')}" placeholder="https://rateyourmusic.com/artist/${esc(rymSlug(b.name))}"></label><span class="hint">Si el botón abre una ficha equivocada, pega aquí la correcta. Si la banda no está en Rate Your Music, puedes poner cualquier otra web (Metal Archives, Wikipedia, Bandcamp…). Vacío = la automática.</span>`,'Guardar');
   }
   return '';
 }
