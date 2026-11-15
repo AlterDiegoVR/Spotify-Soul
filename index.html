@@ -165,7 +165,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.1.1';
+const APP_VER='1.1.2';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -1329,7 +1329,7 @@ function formHtml(){
   }
   return '';
 }
-const confirmHtml=()=>`<div class="panel"><div>${esc(UI.confirm.msg)}</div><div class="btns"><button class="btn danger" data-act="confirmYes">Sí, borrar</button><button class="btn" data-act="cancel">Cancelar</button></div></div>`;
+const confirmHtml=()=>`<div class="panel" id="confirmBox"><div>${esc(UI.confirm.msg)}</div><div class="btns"><button class="btn danger" data-act="confirmYes">${UI.confirm.w==='band'?'Sí, quitar':'Sí, borrar'}</button><button class="btn" data-act="cancel">Cancelar</button></div></div>`;
 async function submitForm(id){
   const val=x=>(document.getElementById(x)?.value??'').trim();
   if(id==='f_setup'||id==='f_cidform'){cfg.clientId=val('f_cid');LS.set('md_cfg',cfg);if(id==='f_setup'&&cfg.clientId&&!tok)login();else{say('Client ID guardado.');}return}
@@ -1545,6 +1545,7 @@ function renderInner(){
   app.innerHTML=`<header class="top"><button class="brand" data-act="home"><img class="logo" src="logo.svg" alt=""><span class="bt"><span class="nm">Spoti<em>Soul</em></span><small class="ver">v${APP_VER}</small></span></button><div class="btns"><button class="sync ic${UI.syncState==='Sin sincronizar'?' bad':''}" id="syncst" data-act="syncInfo" ${UI.syncState?'':'hidden'} title="${esc(UI.syncErr||UI.syncState)}" aria-label="${esc(UI.syncState)}">${syncIcon()}</button>${cfg.clientId?`<button class="btn small ic" data-act="tutorial" aria-label="Ayuda y tutorial" title="Ayuda">?</button><button class="btn small ic" data-act="settings" aria-label="Ajustes" title="Ajustes"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>`:''}</div></header>${notes}${body}${n?`<div class="foot">${n} bandas</div>`:''}`;
   for(const id in keep){const el=document.getElementById(id);if(el&&el.type!=='checkbox')el.value=keep[id]}
   ssSync();
+  if(UI.confirm&&UI.confirm!==UI._shownConfirm){UI._shownConfirm=UI.confirm;const cb=document.getElementById('confirmBox');if(cb)cb.scrollIntoView({block:'center',behavior:'smooth'})}
 }
 
 /* ================= arranque ================= */
