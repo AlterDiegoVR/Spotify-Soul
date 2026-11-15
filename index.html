@@ -170,7 +170,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.2.2';
+const APP_VER='1.2.3';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -1057,6 +1057,7 @@ function placeSelect(id,selG,selS,first){
 function vUnclassified(){
   const list=unclassified();
   let h=crumbs([{t:'Inicio',v:{k:'home'}},{t:'Sin clasificar'}])+`<h1>Sin clasificar</h1>`;
+  if(D.addPl&&tok)h+=`<div class="btns"><button class="btn small" data-act="impAddPl" ${UI.busy?'disabled':''}>Importar «${esc(D.addPl.name)}»</button></div>`;
   const mbHave=list.filter(b=>(b.mbTags||[]).length).length,mbLeft=list.filter(b=>b.sid&&!b.mbAt).length;
   h+=`<div class="panel"><div class="divider" style="font-size:20px">Clasificar con IA</div>
   <ol class="hint" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:13.5px;color:var(--fg)">
@@ -1273,6 +1274,8 @@ function vImport(){
   h+=`<span class="hint">Las bandas nuevas van a “Sin clasificar”. Las que ya tienes no se duplican.</span>`;
   if(UI.busy)h+=`<div class="notice">${esc(UI.busy)}</div>`;
   const dis=UI.busy?'disabled':'';
+  h+=`<div class="panel"><div class="divider" style="font-size:20px">Tu lista «por añadir»</div>${D.addPl?`<div class="btns"><button class="btn primary" data-act="impAddPl" ${dis}>Importar «${esc(D.addPl.name)}»</button><button class="btn small" data-act="clearAddPl">Cambiar de lista</button></div><span class="hint">Lee solo esa lista: 1 petición a Spotify por cada 50 canciones.</span>`
+    :`<span class="hint">Pega el enlace de la lista donde vas guardando canciones de bandas nuevas (en Spotify: Compartir → Copiar enlace) y tendrás un botón para importarla directamente.</span><div class="btns" style="align-items:center"><input type="url" id="f_addpl" placeholder="https://open.spotify.com/playlist/…" style="flex:1;min-width:200px"><button class="btn small" data-act="setAddPl">Guardar</button></div>`}</div>`;
   h+=`<div class="list"><button class="row" data-act="impFollow" ${dis}><span class="name">Artistas que sigues<span class="sub">Trae también sus géneros de Spotify</span></span><span class="meta">→</span></button><button class="row" data-act="impSaved" ${dis}><span class="name">Artistas de tus álbumes guardados</span><span class="meta">→</span></button><button class="row" data-act="loadPlaylists" ${dis}><span class="name">Artistas de tus listas<span class="sub">Eliges qué listas</span></span><span class="meta">→</span></button></div>`;
   if(UI.playlists){
     h+=`<div class="section"><h2>Tus listas · ${UI.playlists.length}</h2><span class="hint">Solo se leen las listas creadas por ti o colaborativas. Se importa el artista principal de cada canción.</span><div class="list">${UI.playlists.map(p=>`<label class="row chk"><input type="checkbox" data-pl="${esc(p.id)}" ${p.on?'checked':''}><span class="name">${esc(p.name)}</span><span class="meta">${p.n??''}</span></label>`).join('')}</div><div class="btns"><button class="btn primary" data-act="impPlaylists" ${dis}>Importar artistas de las marcadas</button></div></div>`;
@@ -1514,6 +1517,12 @@ app.addEventListener('click',async e=>{
     case'loadPlaylists':runImport('Leyendo tus listas…',async()=>{const me=await sp('/me');const pls=await spAll('/me/playlists?limit=50');UI.playlists=pls.filter(p=>p&&(p.owner?.id===me.id||p.collaborative)).map(p=>({id:p.id,name:p.name,n:(p.items||p.tracks||{}).total,on:false}));return null});break;
     case'impPlaylists':{const chosen=(UI.playlists||[]).filter(p=>p.on);if(!chosen.length){say('Marca al menos una lista.',true);return}
       runImport('Leyendo listas…',async prog=>{let added=0,i=0;for(const p of chosen){i++;prog(`(${i}/${chosen.length}) ${p.name}`);const items=await spAll(`/playlists/${p.id}/items?limit=50`);for(const it of items){const t=it&&(it.item||it.track);const ar=t&&t.artists&&t.artists[0];if(ar&&ar.id&&addArtist(ar).isNew)added++}}return added});break}
+    case'setAddPl':{const m=((document.getElementById('f_addpl')||{}).value||'').match(/playlist[\/:]([A-Za-z0-9]{10,})/);if(!m){say('Ese enlace no parece de una lista de Spotify.',true);return}
+      let name='Por añadir';try{const pl=await sp(`/playlists/${m[1]}?fields=name`);if(pl&&pl.name)name=pl.name}catch(_){}
+      D.addPl={id:m[1],name};touch();say(`Lista «${name}» guardada.`);break}
+    case'clearAddPl':D.addPl=null;touch();render();break;
+    case'impAddPl':{if(!D.addPl)return;const pl=D.addPl;
+      runImport(`Leyendo «${pl.name}»…`,async()=>{let added=0;const items=await spAll(`/playlists/${pl.id}/items?limit=50`);for(const it of items){const t=it&&(it.item||it.track);for(const ar of (t&&t.artists)||[]){if(ar&&ar.id&&addArtist(ar).isNew){added++}break}}return added});break}
     case'fetchAll':{const list=bands().filter(b=>b.sid&&!b.fetchedAt);if(!list.length){say('Todas las discografías están cargadas.');return}
       UI.busy=`Cargando discografías… 0/${list.length}`;render();let i=0;
       let stop=null;for(const b of list){try{await fetchDisco(b)}catch(err){if(err.message==='nologin'||err.message==='ratelimit'){stop=err;break}}i++;UI.busy=`Cargando discografías… ${i}/${list.length}`;renderBusy();await sleep(400)}
