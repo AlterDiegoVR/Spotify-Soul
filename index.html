@@ -66,7 +66,7 @@ img.flag{width:auto!important;height:11px!important;min-width:0!important;flex:n
 .bact{flex-wrap:nowrap;gap:6px}.bact .btn{white-space:nowrap}.bact .btn.ic{width:44px;padding:0;justify-content:center;font-size:20px;flex:none}
 .gchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}.gchip{font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--accent);background:rgba(30,215,96,.1);border:1px solid rgba(30,215,96,.28);border-radius:999px;padding:4px 10px;cursor:pointer}
 .dhead{display:flex;align-items:center;justify-content:space-between;gap:10px}.dhead h2{margin:0}.sortb{font-family:var(--mono);font-size:11.5px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer}
-.row.al{cursor:pointer;transition:background .15s}.row.al.off{background:#060807}.row.al.off>img{opacity:.45}.row.al.off .at{color:var(--muted)}.row.al.off .arow{opacity:.75}
+.row.al{cursor:pointer;transition:background .15s}.row.al.off{background:#060807}.row.al.off>img{opacity:.45}.row.al.off .at{color:var(--muted)}.row.al.off .arow{opacity:.75}.ordb{display:flex;flex-direction:column;gap:6px;margin-left:auto;flex:none}.ordb .btn.ic{height:36px;width:40px;font-size:18px}
 .relc{display:inline-flex;align-items:center;gap:2px;white-space:nowrap}.relc svg{vertical-align:-2px}
 .flag.unk{height:auto;font-size:12px;line-height:1;box-shadow:none}
 .flag.globe{height:auto;box-shadow:none;color:var(--muted)}.flag.globe svg{width:13px;height:13px;vertical-align:-2px}
@@ -170,7 +170,7 @@ textarea.code{font-family:var(--mono);font-size:12px;min-height:70px;width:100%;
 <div id="bg" aria-hidden="true"><div class="cv"></div><div class="sh"></div></div>
 <div class="wrap" id="app"><div class="empty">Cargando…</div></div>
 <script>
-const APP_VER='1.2.5';
+const APP_VER='1.2.6';
 (async function(){
 "use strict";
 /* ================= estado y almacenamiento local ================= */
@@ -556,7 +556,7 @@ async function fetchDisco(b,force){
     const y=(a.release_date||'').slice(0,4),type=a.album_type||'album';
     const key=type+'|'+norm(a.name).replace(/\s*[\(\[].*?(deluxe|remaster|edition|version|expanded|anniversary|edición|reedición).*?[\)\]]/g,'').replace(/\s*-\s*.*(deluxe|remaster|edition|version).*$/,'').trim();
     const prev=seen.get(key);
-    if(!prev||(y&&y<prev.y))seen.set(key,{id:a.id,t:a.name,y,type,n:a.total_tracks||0,img:imgOf(a.images),imgL:((a.images||[]).slice().sort((p,q)=>(q.width||0)-(p.width||0))[0]||{}).url||''});
+    if(!prev||(y&&y<prev.y))seen.set(key,{id:a.id,t:a.name,y,...((a.release_date||'').length>4?{sd:a.release_date}:{}),type,n:a.total_tracks||0,img:imgOf(a.images),imgL:((a.images||[]).slice().sort((p,q)=>(q.width||0)-(p.width||0))[0]||{}).url||''});
   }
   const prev=b.albums||[],fresh=[...seen.values()];
   const oldMd={};for(const a of prev)if(a.md)oldMd[a.id]=a.md;
@@ -618,6 +618,16 @@ function favList(list,showPath){return list.length?`<div class="list">${favFirst
 const FMTS=['LP','CD','Casete','Digital'];
 const rymSlug=n=>(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/&/g,' and ').replace(/['’.]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 const albumYear=(b,a)=>(b.years||{})[a.id]||(a.md||'').slice(0,4)||a.y||'';
+// fecha completa (MusicBrainz o Spotify) para desempatar discos del mismo año; solo si coincide con el año que se muestra
+const albumDate=(b,a)=>{const y=albumYear(b,a);return[a.md,a.sd].find(d=>d&&d.length>4&&d.startsWith(y))||''};
+// discos visibles en el orden de la ficha: por fecha (año, luego día y mes), con tu orden manual (b.ord) encima si lo has puesto
+function sortAlbums(b){const hidden=new Set(b.hidden||[]);
+  const al=(b.albums||[]).filter(a=>!hidden.has(a.id)).map(a=>({a,y:albumYear(b,a),d:albumDate(b,a)}));
+  al.sort((p,q)=>{if(!p.y!==!q.y)return p.y?-1:1;return p.y.localeCompare(q.y)||(!p.d!==!q.d?(p.d?-1:1):p.d.localeCompare(q.d))||p.a.t.localeCompare(q.a.t,'es')});
+  let out=al.map(x=>x.a);
+  if(Array.isArray(b.ord)&&b.ord.length){const pos=new Map(b.ord.map((id,i)=>[id,i]));const slots=[];out.forEach((a,i)=>{if(pos.has(a.id))slots.push(i)});const mem=slots.map(i=>out[i]).sort((p,q)=>pos.get(p.id)-pos.get(q.id));slots.forEach((i,k)=>out[i]=mem[k])}
+  if(b.rev){const ny=out.filter(a=>!albumYear(b,a)&&!(b.ord||[]).includes(a.id));out=out.filter(a=>!ny.includes(a)).reverse().concat(ny)}
+  return out}
 // deep=true: la rama y todo lo que cuelga de ella; deep=false: solo lo que está directamente en esa rama
 function placeMatcher(place,deep){const [pg,ps]=(place||'|').split('|');const g=G(pg);if(!pg||!g)return null;
   if(ps&&findAny(ps)){const s=findAny(ps).s,ids=deep?shareIds(s):new Set(twins(s).map(t=>t.s.id).concat(s.id));return p=>ids.has(p.s)}
@@ -639,7 +649,7 @@ function albumRow(b,a,o={}){
    `<button class="pill${fm.length?' on':''}" data-act="fmtOpen" ${D_}>${fm.length?esc(fm.join(' · ')):'+ Formato'}</button>`+
    `${a.type==='compilation'?'<span class="tag">Recopilatorio</span>':a.type==='single'?'<span class="tag">Single/EP</span>':''}</div>`+
    (UI.fmtOpen===b.id+'|'+a.id?`<div class="fmtrow">${FMTS.map(f=>`<button class="pill${fm.includes(f)?' on':''}" data-act="fmt" ${D_} data-f="${f}" aria-pressed="${fm.includes(f)}">${f}</button>`).join('')}<button class="pill" data-act="fmtOpen" ${D_}>Listo</button></div>`:'')+
-   `</div></div>`;
+   `</div>`+(o.ord?`<div class="ordb"><button class="btn ic" data-act="ordMv" data-d="-1" ${D_} aria-label="Subir">↑</button><button class="btn ic" data-act="ordMv" data-d="1" ${D_} aria-label="Bajar">↓</button></div>`:'')+`</div>`;
 }
 /* ================= países y banderas ================= */
 const CC_ALL='AF AX AL DZ AS AD AO AI AQ AG AR AM AW AU AT AZ BS BH BD BB BY BE BZ BJ BM BT BO BQ BA BW BR IO BN BG BF BI CV KH CM CA KY CF TD CL CN CX CC CO KM CG CD CK CR CI HR CU CW CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FK FO FJ FI FR GF PF GA GM GE DE GH GI GR GL GD GP GU GT GG GN GW GY HT VA HN HK HU IS IN ID IR IQ IE IM IL IT JM JP JE JO KZ KE KI KP KR KW KG LA LV LB LS LR LY LI LT LU MO MG MW MY MV ML MT MH MQ MR MU YT MX FM MD MC MN ME MS MA MZ MM NA NR NP NL NC NZ NI NE NG NU NF MK MP NO OM PK PW PS PA PG PY PE PH PN PL PT PR QA RE RO RU RW BL SH KN LC MF PM VC WS SM ST SA SN RS SC SL SG SX SK SI SB SO ZA GS SS ES LK SD SR SJ SE CH SY TW TJ TZ TH TL TG TK TO TT TN TR TM TC TV UG UA AE GB US UY UZ VU VE VN VG VI WF EH YE ZM ZW XK'.split(' ');
@@ -1100,18 +1110,18 @@ function vBand(){
   const chain=[],myPars=pars(b).map(id=>D.bands[id]).filter(Boolean);let x=b;while(pars(x).length===1&&D.bands[pars(x)[0]]&&chain.length<10){x=D.bands[pars(x)[0]];chain.unshift(x)}
   chain.forEach(c=>parts.push({t:c.name,v:{k:'band',id:c.id}}));parts.push({t:b.name});
   let h=crumbs(parts)+`<div class="hero">${b.img?`<img src="${esc(b.img)}" alt="">`:''}<div class="in"><h1>${esc(b.name)}</h1>${myPars.length>1?`<span class="ccline">Rel. de ${myPars.map(p=>`<a href="#" data-go="${J({k:'band',id:p.id})}">${esc(p.name)}</a>`).join(' · ')}</span>`:''}${ccOf(b).length?`<span class="ccline">${ccOf(b).map(c=>flag(c)+' '+esc(ccName(c))).join(' · ')}</span>`:''}${ps.length?`<div class="gchips">${ps.map(p=>`<button class="gchip" data-go="${J(p.s?{k:'sub',g:p.g,s:p.s}:{k:'genre',g:p.g})}" title="${esc(pName(p))}">${esc((p.s&&SG(G(p.g),p.s)||G(p.g)||{}).name||pName(p))}</button>`).join('')}</div>`:''}${b.note?`<span class="hint">${esc(b.note)}</span>`:''}${(b.spGenres||[]).length?`<div class="tags">${b.spGenres.slice(0,6).map(g=>`<span class="tag">${esc(g)}</span>`).join('')}</div>`:''}</div></div>`;
-  const more=[b.src==='mb'||(b.sid&&tok)?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:'',b.src==='mb'&&b.sid&&tok?`<button class="btn small" data-act="useSpotify">Usar discografía de Spotify</button>`:''].join('');
+  const more=[(b.albums||[]).length>1?`<button class="btn small" data-act="ordMode">Ordenar discos</button>`:'',b.src==='mb'||(b.sid&&tok)?`<button class="btn small" data-act="refetch">Actualizar discos</button>`:'',b.src==='mb'&&b.sid&&tok?`<button class="btn small" data-act="useSpotify">Usar discografía de Spotify</button>`:''].join('');
   h+=`<div class="btns bact">${b.sid?`<a class="btn spot" href="https://open.spotify.com/artist/${esc(b.sid)}" target="_blank" rel="noopener">Spotify</a>`:''}<a class="btn" href="${esc(b.rym||'https://rateyourmusic.com/artist/'+rymSlug(b.name))}" target="_blank" rel="noopener" title="Rate Your Music">RYM ↗</a><button class="btn ic${b.fav?' favon':''}" data-act="favBand" aria-pressed="${!!b.fav}" aria-label="Favorita" title="Favorita">${b.fav?'♥':'♡'}</button><button class="btn" data-act="editBand">Editar</button>${more?`<button class="btn ic" data-act="moreBand" aria-label="Más opciones" title="Más opciones" aria-expanded="${!!UI.moreOpen}">⋯</button>`:''}</div>${more&&UI.moreOpen?`<div class="btns">${more}</div>`:''}`;
   if(UI.form)h+=formHtml();if(UI.confirm)h+=confirmHtml();
   if(UI.busy)h+=`<div class="notice">${esc(UI.busy)}</div>`;
   const hidden=new Set(b.hidden||[]),picked=new Set(b.picked||[]);
   const yr=a=>albumYear(b,a);
-  const dir=b.rev?-1:1,al=(b.albums||[]).filter(a=>!hidden.has(a.id)).sort((p,q)=>{const x=yr(p),y=yr(q);if(!x!==!y)return x?-1:1;return dir*(x||'').localeCompare(y||'')||p.t.localeCompare(q.t,'es')});
+  const al=sortAlbums(b),ordM=UI.ordMode===b.id;
   const yrs=al.map(yr).filter(Boolean).sort(),y0=yrs[0]||'',y1=yrs[yrs.length-1]||'';
   const sortBtn=al.length>1?`<button class="sortb" data-act="revDisco" title="${b.rev?'Más reciente primero':'Más antiguo primero'} (toca para cambiar)">${b.rev?`${y1} → ${y0}`:`${y0} → ${y1}`} ⇅</button>`:'';
-  const dh=(t)=>`<div class="dhead"><h2>${t}</h2>${sortBtn}</div>`;
+  const dh=(t)=>`<div class="dhead"><h2>${t}</h2>${sortBtn}</div>`+(ordM?`<div class="notice" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span style="flex:1;min-width:150px">Sube o baja cada disco con ↑ ↓.</span>${Array.isArray(b.ord)?`<button class="btn small" data-act="ordReset">Volver al orden por fecha</button>`:''}<button class="btn small primary" data-act="ordMode">Listo</button></div>`:'');
   const isMB=b.src==='mb',main=al.filter(a=>isMB?a.type==='album':a.type!=='single'),singles=al.filter(a=>a.type==='single'),extra=isMB?al.filter(a=>a.type!=='album'&&a.type!=='single'):[];
-  const row=a=>albumRow(b,a);
+  const row=a=>albumRow(b,a,{ord:ordM});
   if(!b.fetchedAt&&(b.mbNone||UI.mbErr[b.id]))h+=`<div class="section"><h2>Discografía</h2><div class="empty">${UI.mbErr[b.id]?'MusicBrainz no ha respondido al cargar la discografía.':b.mbWhy==='empty'?'Esta banda no tiene discos en MusicBrainz.':'No he podido identificar esta banda en MusicBrainz: no tiene enlazado su Spotify y hay varias con ese nombre (o ninguna exacta).'}</div>
     <div class="btns"><button class="btn small" data-act="mbRetry">Reintentar</button>${b.sid&&tok?`<button class="btn small" data-act="useSpotify">Cargar desde Spotify</button>`:''}</div>
     <div class="btns" style="align-items:center"><input type="url" id="f_mburl" placeholder="Pega el enlace de la banda en musicbrainz.org" style="flex:1;min-width:200px"><button class="btn small" data-act="mbLink">Usar este</button></div><span class="hint">Busca la banda en musicbrainz.org, copia la dirección de su ficha (…/artist/…) y pégala aquí.</span>`;
@@ -1481,6 +1491,11 @@ app.addEventListener('click',async e=>{
     case'unhide':{D.bands[v.id].hidden=[];touch();render();break}
     case'revDisco':{const b=D.bands[v.id];if(!b)return;if(b.rev)delete b.rev;else b.rev=true;touch();render();break}
     case'moreBand':UI.moreOpen=!UI.moreOpen;render();break;
+    case'ordMode':UI.ordMode=UI.ordMode===v.id?null:v.id;UI.moreOpen=false;render();break;
+    case'ordReset':{const b=D.bands[v.id];if(!b)return;delete b.ord;touch();render();break}
+    case'ordMv':{const b=D.bands[a.dataset.b];if(!b)return;const row=a.closest('.row.al'),sib=row&&(a.dataset.d==='-1'?row.previousElementSibling:row.nextElementSibling);const nid=sib&&sib.dataset.pick;if(!nid)return;
+      const ids=sortAlbums(b).map(x=>x.id),asc=b.rev?ids.slice().reverse():ids,i=asc.indexOf(a.dataset.a),j=asc.indexOf(nid);if(i<0||j<0)return;[asc[i],asc[j]]=[asc[j],asc[i]];b.ord=asc;touch();
+      const y=row.getBoundingClientRect().top;render();const nr=app.querySelector(`.row.al[data-pick="${CSS.escape(a.dataset.a)}"]`);if(nr)window.scrollBy(0,nr.getBoundingClientRect().top-y);break}
     case'toggleSingles':UI.showSingles=!UI.showSingles;render();break;
     case'loadSingles':{const b=D.bands[v.id];if(!b)return;UI.busy='Cargando singles y EPs…';render();
       try{const items=await spAll(`/artists/${b.sid}/albums?include_groups=single&limit=10`);const have=new Set((b.albums||[]).map(x=>x.id)),seenT=new Set();
